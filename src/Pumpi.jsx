@@ -828,7 +828,13 @@ export default function Pumpi(){
     setCelebration(true);
   };
 
-  const deleteSession=id=>{save({...data,sessions:data.sessions.filter(s=>s.id!==id)});setTab("home");};
+  const deleteSession=async(id)=>{
+  save({...data,sessions:data.sessions.filter(s=>s.id!==id)});
+  if(user){
+    await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
+  }
+  setTab("home");
+};
   const saveManualSession=session=>{save({...data,sessions:[session,...data.sessions]});setShowManual(false);};
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setData({sessions:[]});try{localStorage.removeItem(STORAGE_KEY);}catch{}};
 
