@@ -207,7 +207,13 @@ function SessionView({session,onUpdate,theme,onFinish}){
   const isActive=session.status==="active";
   const timer=useTimer(session.startedAt,isActive);
   const dur=calcDuration(session.startedAt,session.finishedAt);
-  const addEx=(group,machine)=>{onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:"",rp:"",reps:"",weightHistory:[]}]});setModal(null);};
+  const addEx=(group,machine)=>{
+  const allExs=data.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
+  const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const lastEntry=allHist[0];
+  onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",weightHistory:[]}]});
+  setModal(null);
+};
   const updEx=(group,id,data)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...data}:e)});
   const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
   const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
