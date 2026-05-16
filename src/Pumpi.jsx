@@ -51,6 +51,7 @@ function useTimer(startedAt, active) {
   const s=elapsed%60,m=Math.floor(elapsed/60)%60,hh=Math.floor(elapsed/3600);
   return hh>0?`${String(hh).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
+
 function calcDuration(a,b){
   if (!a||!b) return null;
   const m=Math.floor((b-a)/60000),hh=Math.floor(m/60);
@@ -81,7 +82,20 @@ function CelebrationModal({theme,session,onClose}){
     {conf&&<Confetti onDone={()=>setConf(false)}/>}
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(10px)",padding:"20px"}} onClick={onClose}>
       <div style={{background:theme.modalBg,border:`2px solid ${theme.accent}50`,borderRadius:"28px",padding:"40px 28px 32px",textAlign:"center",maxWidth:"320px",width:"100%",boxShadow:`0 0 80px ${theme.accent}25`}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:"64px",marginBottom:"12px",lineHeight:1}}>
+        <div style={{fontSize:"64px",marginBottom:"12px",lineHeight:1}}>🍑</div>
+        <h2 style={{color:theme.accent,fontSize:"22px",fontWeight:800,fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>{msg}</h2>
+        {dur&&<p style={{color:theme.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginBottom:"4px"}}>⏱ Duração: <strong style={{color:theme.text}}>{dur}</strong></p>}
+        <p style={{color:theme.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginBottom:"20px"}}>{total} exercícios · {session.lower?.length||0} lower · {session.upper?.length||0} upper</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:"6px",justifyContent:"center",marginBottom:"24px"}}>
+          {[...(session.lower||[]),...(session.upper||[])].map((ex,i)=>(
+            <span key={i} style={{background:`${theme.accent}18`,border:`1px solid ${theme.accent}30`,borderRadius:"8px",padding:"4px 10px",color:theme.accent,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` ${ex.weight}kg`:""}</span>
+          ))}
+        </div>
+        <button onClick={onClose} style={{background:theme.accent,border:"none",borderRadius:"14px",color:theme.accentText,fontWeight:800,fontSize:"15px",padding:"14px 32px",cursor:"pointer",width:"100%",fontFamily:"'DM Sans',sans-serif"}}>Fechar 💪</button>
+      </div>
+    </div>
+  </>);
+}
 function HistoryModal({machine,history,theme,onClose}){
   const sorted=[...history].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const max=history.reduce((m,h)=>Math.max(m,parseFloat(h.weight)||0),0);
@@ -249,6 +263,7 @@ function SessionView({session,onUpdate,theme,onFinish}){
     </div>
   );
 }
+
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
