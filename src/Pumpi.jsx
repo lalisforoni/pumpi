@@ -727,8 +727,177 @@ function MetricsView({sessions,theme}){
     </Card>
     <Card>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>
-          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
+        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>📅 Constância</p>
+        <Label>{ratLevel.label}</Label>
+      </div>
+      <p style={{color:T.textMuted,fontSize:"11px",margin:"4px 0 10px",fontFamily:"'DM Sans',sans-serif"}}>{streak} dias seguidos · melhor: {bestStreak} dias</p>
+      <Bar pct={Math.min(100,(streak/21)*100)} color={T.accent} h={8}/>
+    </Card>
+    {avgDur>0&&(<Card><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>⏱ Tempo Médio</p><p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{avgDur>=60?`${Math.floor(avgDur/60)}h ${avgDur%60}min`:`${avgDur} min`} por treino</p></div><p style={{color:T.accent,fontSize:"32px",margin:0}}>{avgDur<30?"⚡":avgDur<60?"🔥":"🦾"}</p></div></Card>)}
+    {topMachines.length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🏆 Suas Favoritas</p>{topMachines.map(([name,count],i)=>{const p=getPersona(name);const pct=Math.round((count/topMachines[0][1])*100);return(<div key={name} style={{marginBottom:"10px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span>{i===0&&<span style={{background:`${T.accent}20`,color:T.accent,fontSize:"9px",padding:"1px 6px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>favorita</span>}</div><span style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>{count}x</span></div><Bar pct={pct} color={p.color} h={6}/></div>);})}</Card>)}
+    {Object.keys(machinePRs).length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🥇 Meus PRs</p><div style={{display:"flex",flexDirection:"column",gap:"6px"}}>{Object.entries(machinePRs).sort((a,b)=>b[1]-a[1]).map(([name,kg])=>{const p=getPersona(name);return(<div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:`${p.color}10`,border:`1px solid ${p.color}25`,borderRadius:"10px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span></div><span style={{color:p.color,fontSize:"14px",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{kg}kg</span></div>);})}</div></Card>)}
+  </div>);
+}
+
+export default function Pumpi(){
+  const [data,setData]=useState({sessions:[]});
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [activeSession,setActiveSession]=useState(null);
+  const [tab,setTab]=useState("home");
+  const [loaded,setLoaded]=useState(false);
+  const [theme,setTheme]=useState(getTimeTheme());
+  const [celebration,setCelebration]=useState(false);
+  const [showManual,setShowManual]=useState(false);
+  const T=theme;
+
+  useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
+
+  useEffect(()=>{
+    (async()=>{
+      // Tenta recuperar sessão salva no localStorage
+      const{data:{session}}=await supabase.auth.getSession();
+      if(session?.user){
+        setUser(session.user);
+        await loadData(session.user.id);
+      } else {
+        // Sem login, carrega do localStorage
+        try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
+      }
+      setLoaded(true);
+    })();
+
+    // Escuta mudanças de auth
+    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
+      if(event==="SIGNED_IN"&&session?.user){
+        setUser(session.user);
+        await loadData(session.user.id);
+      } else if(event==="SIGNED_OUT"){
+        setUser(null); setProfile(null); setData({sessions:[]});
+      }
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  const loadData=async(uid)=>{
+    // Carrega perfil
+    const{data:prof}=await supabase.from("profiles").select("*").eq("id",uid).single();
+    if(prof) setProfile(prof);
+    // Carrega sessões do Supabase
+    const{data:rows,error}=await supabase.from("sessions").select("*").eq("user_id",uid).order("id",{ascending:false});
+    if(rows&&rows.length>0){
+      setData({sessions:rows.map(r=>({...r.data,id:r.id}))});
+    } else {
+      // Fallback: tenta migrar dados do localStorage
+      try{
+        const local=localStorage.getItem(STORAGE_KEY);
+        if(local){
+          const parsed=JSON.parse(local);
+          if(parsed.sessions?.length>0){
+            setData(parsed);
+            // Migra para o Supabase
+            for(const s of parsed.sessions){
+              await supabase.from("sessions").upsert({id:s.id,user_id:uid,data:s},{onConflict:"id"});
+            }
+          }
+        }
+      }catch{}
+    }
+  };
+
+  const save=async(nd)=>{
+    setData(nd);
+    if(user){
+      // Salva no Supabase
+      const upserts=nd.sessions.map(s=>({id:s.id,user_id:user.id,data:s}));
+      await supabase.from("sessions").upsert(upserts,{onConflict:"id"});
+    }
+    // Sempre salva no localStorage como backup
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(nd));}catch{}
+  };
+
+  const newSession=()=>{
+    const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
+    save({...data,sessions:[s,...data.sessions]});
+    setActiveSession(s.id); setTab("session");
+  };
+
+  const updateSession=updated=>{
+    save({...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)});
+    setActiveSession(updated.id);
+  };
+
+  const finishSession=()=>{
+    const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
+    const updated={...s,status:"done",finishedAt:Date.now()};
+    save({...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)});
+    setCelebration(true);
+  };
+
+  const deleteSession=id=>{save({...data,sessions:data.sessions.filter(s=>s.id!==id)});setTab("home");};
+  const saveManualSession=session=>{save({...data,sessions:[session,...data.sessions]});setShowManual(false);};
+  const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setData({sessions:[]});try{localStorage.removeItem(STORAGE_KEY);}catch{}};
+
+  const currentSession=data.sessions.find(s=>s.id===activeSession);
+  const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
+  const statusBadge=s=>{
+    if(s.status==="done")   return{label:"✅ Finalizado",  color:T.green, bg:`${T.green}18`};
+    if(s.status==="active") return{label:"🔥 Em andamento",color:T.accent,bg:`${T.accent}18`};
+    return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
+  };
+
+  if(!loaded) return <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:"40px"}}>🍑</span></div>;
+  if(!user) return <LoginScreen theme={T} onLogin={(u)=>{setUser(u);loadData(u.id);}}/>;
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        input::placeholder{color:${T.textMuted}!important;}
+        input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+        input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
+        select option{background:${T.modalBg};color:${T.text};}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
+      `}</style>
+
+      {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
+      {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
+
+      <div style={{padding:"calc(env(safe-area-inset-top) + 20px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          {tab==="session"?(
+            <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
+          ):(
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
+                <span style={{fontSize:"16px"}}>🍑</span>
+                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
+                <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+              </div>
+              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
+            </div>
+          )}
+          {tab==="home"&&(
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setShowManual(true)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",color:T.textSub,fontWeight:600,fontSize:"12px",padding:"10px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>📅 Manual</button>
+              <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
+            </div>
+          )}
+          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
+          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
+        </div>
+      </div>
+
+      <div style={{padding:"20px"}}>
+        {tab==="home"&&(data.sessions.length===0?(
+          <div style={{textAlign:"center",padding:"70px 20px"}}>
+            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
+            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
+          </div>
+        ):data.sessions.map(s=>{
+                    const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
           return(
             <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
