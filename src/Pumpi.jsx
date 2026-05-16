@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYmR2cHBhdGFzdWN5YnpmemV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDI1NTUsImV4cCI6MjA5NDUxODU1NX0.H4lPCHC-bdlrf1JEXzWd1x-kzHeSdpFq6UFIepjhGUk";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const STORAGE_KEY = "pumpi_v1";
 const defaultMachines = {
@@ -51,7 +56,6 @@ function useTimer(startedAt, active) {
   const s=elapsed%60,m=Math.floor(elapsed/60)%60,hh=Math.floor(elapsed/3600);
   return hh>0?`${String(hh).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
-
 function calcDuration(a,b){
   if (!a||!b) return null;
   const m=Math.floor((b-a)/60000),hh=Math.floor(m/60);
@@ -95,6 +99,364 @@ function CelebrationModal({theme,session,onClose}){
       </div>
     </div>
   </>);
+}
+
+// ── LOGIN SCREEN ──────────────────────────────────────────────────────────────
+function LoginScreen({theme,onLogin}){
+  const T=theme;
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [username,setUsername]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  const handleSubmit=async()=>{
+    setLoading(true); setError("");
+    try{
+      if(mode==="login"){
+        const{error}=await supabase.auth.signInWithPassword({email,password});
+        if(error) throw error;
+      } else {
+        const{data,error}=await supabase.auth.signUp({email,password});
+        if(error) throw error;
+        if(data.user){
+          await supabase.from("profiles").insert({id:data.user.id,username,email});
+        }
+      }
+      onLogin();
+    } catch(e){
+      setError(e.message||"Erro ao entrar");
+    }
+    setLoading(false);
+  };
+
+  const inp={background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"12px",color:T.text,fontSize:"15px",padding:"14px 16px",width:"100%",fontFamily:"'DM Sans',sans-serif",outline:"none",marginBottom:"10px"};
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{width:"100%",maxWidth:"360px"}}>
+        <div style={{textAlign:"center",marginBottom:"40px"}}>
+          <div style={{fontSize:"64px",marginBottom:"12px"}}>🍑</div>
+          <h1 style={{color:T.accent,fontSize:"28px",fontWeight:800,fontFamily:"'DM Sans',sans-serif",letterSpacing:"-0.5px"}}>Pumpi</h1>
+          <p style={{color:T.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginTop:"4px"}}>Progresso de Treino</p>
+        </div>
+        <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"4px",marginBottom:"20px",border:`1px solid ${T.bgCardBorder}`}}>
+          {["login","signup"].map(m=>(
+            <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"10px",background:mode===m?T.accent:"transparent",border:"none",borderRadius:"8px",color:mode===m?T.accentText:T.textSub,fontWeight:700,fontSize:"13px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+              {m==="login"?"Entrar":"Cadastrar"}
+            </button>
+          ))}
+        </div>
+        {mode==="signup"&&<input placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} style={inp}/>}
+        <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} type="email" style={inp}/>
+        <input placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)} type="password" style={inp}/>
+        {error&&<p style={{color:T.danger,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",marginBottom:"10px",textAlign:"center"}}>{error}</p>}
+        <button onClick={handleSubmit} disabled={loading} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"16px",padding:"16px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:"4px",opacity:loading?.7:1}}>
+          {loading?"...":(mode==="login"?"Entrar 🍑":"Criar conta 🍑")}
+        </button>
+      </div>
+    </div>
+  );
+}
+// ── MANUAL SESSION MODAL ──────────────────────────────────────────────────────
+function ManualSessionModal({theme,onSave,onClose,allSessions}){
+  const T=theme;
+  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const [durMin,setDurMin]=useState("");
+  const [lower,setLower]=useState([]);
+  const [upper,setUpper]=useState([]);
+  const [addingGroup,setAddingGroup]=useState(null);
+  const [customMachine,setCustomMachine]=useState("");
+
+  const addEx=(group,machine)=>{
+    const allExs=allSessions.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
+    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const last=allHist[0];
+    const ex={id:Date.now(),machine,weight:last?.weight||"",rp:last?.rp||"",reps:last?.reps||"",weightHistory:[]};
+    if(group==="lower") setLower(p=>[...p,ex]);
+    else setUpper(p=>[...p,ex]);
+    setAddingGroup(null); setCustomMachine("");
+  };
+  const updEx=(group,id,data)=>{
+    if(group==="lower") setLower(p=>p.map(e=>e.id===id?{...e,...data}:e));
+    else setUpper(p=>p.map(e=>e.id===id?{...e,...data}:e));
+  };
+  const delEx=(group,id)=>{
+    if(group==="lower") setLower(p=>p.filter(e=>e.id!==id));
+    else setUpper(p=>p.filter(e=>e.id!==id));
+  };
+
+  const handleSave=()=>{
+    const dateObj=new Date(date+"T12:00:00");
+    const dur=durMin?parseInt(durMin)*60000:0;
+    const session={
+      id:dateObj.getTime(),
+      date:dateObj.toISOString(),
+      status:"done",
+      startedAt:dateObj.getTime(),
+      finishedAt:dateObj.getTime()+dur,
+      lower,upper,
+      manual:true,
+    };
+    onSave(session);
+  };
+
+  const inp={background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"};
+  const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",list:lower},{key:"upper",label:"Upper Body",emoji:"💪",list:upper}];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+        <p style={{color:T.accent,fontSize:"11px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>📅 Lançar Treino Antigo</p>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}}>
+          <div>
+            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DATA</p>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp,width:"100%"}}/>
+          </div>
+          <div>
+            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DURAÇÃO (min)</p>
+            <input type="number" placeholder="ex: 46" value={durMin} onChange={e=>setDurMin(e.target.value)} style={{...inp,width:"100%"}}/>
+          </div>
+        </div>
+
+        {groups.map(g=>(
+          <div key={g.key} style={{marginBottom:"20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <span style={{color:T.textSub,fontSize:"12px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{g.emoji} {g.label} ({g.list.length})</span>
+              <button onClick={()=>setAddingGroup(g.key)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>
+            </div>
+            {addingGroup===g.key&&(
+              <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+                <input placeholder="Nome da máquina..." value={customMachine} onChange={e=>setCustomMachine(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&customMachine.trim()&&addEx(g.key,customMachine.trim())}
+                  style={{...inp,flex:1}}/>
+                <button onClick={()=>customMachine.trim()&&addEx(g.key,customMachine.trim())} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 14px",cursor:"pointer"}}>+</button>
+              </div>
+            )}
+            {addingGroup===g.key&&(
+              <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}}>
+                {defaultMachines[g.key].map(s=>(
+                  <button key={s} onClick={()=>addEx(g.key,s)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px",color:T.textSub,fontSize:"11px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>
+                ))}
+              </div>
+            )}
+            {g.list.map(ex=>(
+              <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 70px 55px 70px 30px",gap:"5px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
+                <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}</span>
+                <input type="text" placeholder="kg" defaultValue={ex.weight} onBlur={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
+                <input type="number" placeholder="RP" defaultValue={ex.rp} onBlur={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
+                <select defaultValue={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px"}}>
+                  <option value="">rep</option>
+                  {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+                <button onClick={()=>delEx(g.key,ex.id)} style={{background:"rgba(255,80,80,0.1)",border:"none",borderRadius:"6px",color:"#ff6b6b",fontSize:"14px",cursor:"pointer",padding:"4px 0",width:"30px"}}>×</button>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <button onClick={handleSave} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"15px",padding:"14px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          Salvar Treino 🍑
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── FRIENDS VIEW ──────────────────────────────────────────────────────────────
+function FriendsView({theme,user,sessions}){
+  const T=theme;
+  const [friends,setFriends]=useState([]);
+  const [pending,setPending]=useState([]);
+  const [battles,setBattles]=useState([]);
+  const [searchEmail,setSearchEmail]=useState("");
+  const [searchResult,setSearchResult]=useState(null);
+  const [searching,setSearching]=useState(false);
+  const [tab,setTab]=useState("friends");
+  const [selectedFriend,setSelectedFriend]=useState(null);
+  const [battleType,setBattleType]=useState(null);
+
+  useEffect(()=>{loadFriends();},[]);
+
+  const loadFriends=async()=>{
+    const{data:reqs}=await supabase.from("friendships").select("*,profiles!friendships_requester_id_fkey(username,email),profiles!friendships_receiver_id_fkey(username,email)").or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+    if(reqs){
+      const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
+        const isMe=r.requester_id===user.id;
+        return{id:isMe?r.receiver_id:r.requester_id,username:isMe?r.profiles_receiver?.username:r.profiles_requester?.username,friendshipId:r.id};
+      });
+      const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id);
+      setFriends(accepted); setPending(pend);
+    }
+    const{data:bts}=await supabase.from("battles").select("*").or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`).eq("status","active");
+    if(bts) setBattles(bts);
+  };
+
+  const searchUser=async()=>{
+    setSearching(true); setSearchResult(null);
+    const{data}=await supabase.from("profiles").select("*").eq("email",searchEmail).neq("id",user.id).single();
+    setSearchResult(data||"not_found"); setSearching(false);
+  };
+
+  const sendRequest=async(receiverId)=>{
+    await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
+    setSearchEmail(""); setSearchResult(null);
+    alert("Pedido enviado! 🍑");
+  };
+
+  const acceptRequest=async(friendshipId)=>{
+    await supabase.from("friendships").update({status:"accepted"}).eq("id",friendshipId);
+    loadFriends();
+  };
+
+  const createBattle=async(opponentId,type)=>{
+    const ends=new Date(); ends.setDate(ends.getDate()+7);
+    await supabase.from("battles").insert({challenger_id:user.id,opponent_id:opponentId,type,status:"active",ends_at:ends.toISOString()});
+    setBattleType(null); setSelectedFriend(null); loadFriends();
+    alert("Batalha criada! Que vença a melhor 🔥");
+  };
+
+  const myStreak=()=>{
+    const done=sessions.filter(s=>s.status==="done");
+    const days=[...new Set(done.map(s=>s.date.slice(0,10)))].sort();
+    let streak=0;
+    if(days.length){
+      const today=new Date().toISOString().slice(0,10);
+      const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+      if(days[days.length-1]===today||days[days.length-1]===yesterday){
+        streak=1;
+        for(let i=days.length-2;i>=0;i--){
+          const d=(new Date(days[i+1])-new Date(days[i]))/(1000*60*60*24);
+          if(d===1)streak++;else break;
+        }
+      }
+    }
+    return streak;
+  };
+
+  const myLower=sessions.reduce((a,s)=>a+(s.lower?.length||0),0);
+
+  const battleTypes=[
+    {id:"streak",label:"🔥 Batalha de Streak",desc:"Quem mantém mais dias seguidos em 7 dias"},
+    {id:"lower",label:"🍑 Batalha do Fundão",desc:"Quem faz mais exercícios lower em 7 dias"},
+    {id:"total",label:"💪 Batalha Total",desc:"Quem treina mais vezes em 7 dias"},
+  ];
+
+  const Card=({children,style={}})=>(<div style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"14px",padding:"14px",marginBottom:"10px",...style}}>{children}</div>);
+
+  return(<div>
+    <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"3px",marginBottom:"16px",border:`1px solid ${T.bgCardBorder}`}}>
+      {["friends","battles","add"].map(t=>(
+        <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",background:tab===t?T.accent:"transparent",border:"none",borderRadius:"8px",color:tab===t?T.accentText:T.textSub,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          {t==="friends"?"Amigos":t==="battles"?"Batalhas":"+ Adicionar"}
+        </button>
+      ))}
+    </div>
+
+    {tab==="add"&&(<div>
+      <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"8px"}}>BUSCAR POR EMAIL</p>
+      <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
+        <input placeholder="email@exemplo.com" value={searchEmail} onChange={e=>setSearchEmail(e.target.value)}
+          style={{flex:1,background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"}}/>
+        <button onClick={searchUser} disabled={searching} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 16px",cursor:"pointer"}}>
+          {searching?"...":"Buscar"}
+        </button>
+      </div>
+      {searchResult&&searchResult!=="not_found"&&(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <p style={{color:T.text,fontWeight:600,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{searchResult.username}</p>
+              <p style={{color:T.textMuted,fontSize:"12px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{searchResult.email}</p>
+            </div>
+            <button onClick={()=>sendRequest(searchResult.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+              Adicionar 🍑
+            </button>
+          </div>
+        </Card>
+      )}
+      {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>Usuário não encontrado 😕</p>}
+
+      {pending.length>0&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"16px 0 8px",letterSpacing:"1.5px"}}>PEDIDOS PENDENTES</p>
+        {pending.map(p=>(
+          <Card key={p.id}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.profiles_requester?.username||"?"}</p>
+              <button onClick={()=>acceptRequest(p.id)} style={{background:T.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Aceitar ✓</button>
+            </div>
+          </Card>
+        ))}
+      </>)}
+    </div>)}
+
+    {tab==="friends"&&(<div>
+      {friends.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
+          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
+        </div>
+      ):friends.map(f=>(
+        <Card key={f.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <div style={{width:"36px",height:"36px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍑</div>
+              <div>
+                <p style={{color:T.text,fontWeight:700,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{f.username}</p>
+              </div>
+            </div>
+            <button onClick={()=>setSelectedFriend(f)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.accent,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+              ⚔️ Desafiar
+            </button>
+          </div>
+        </Card>
+      ))}
+    </div>)}
+
+    {tab==="battles"&&(<div>
+      <Card style={{border:`1px solid ${T.accent}30`,marginBottom:"16px"}}>
+        <p style={{color:T.textMuted,fontSize:"10px",letterSpacing:"1.5px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 6px"}}>MEU STATUS</p>
+        <div style={{display:"flex",gap:"16px"}}>
+          <div><p style={{color:T.accent,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myStreak()}🔥</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>streak</p></div>
+          <div><p style={{color:"#e879f9",fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myLower}🍑</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>lower total</p></div>
+          <div><p style={{color:T.green,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{sessions.filter(s=>s.status==="done").length}💪</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>treinos</p></div>
+        </div>
+      </Card>
+      {battles.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <p style={{fontSize:"40px",marginBottom:"12px"}}>⚔️</p>
+          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Nenhuma batalha ativa.<br/>Desafie uma amiga!</p>
+        </div>
+      ):battles.map(b=>(
+        <Card key={b.id} style={{border:`1px solid ${T.accent}25`}}>
+          <p style={{color:T.accent,fontSize:"12px",fontWeight:700,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif"}}>
+            {b.type==="streak"?"🔥 Batalha de Streak":b.type==="lower"?"🍑 Batalha do Fundão":"💪 Batalha Total"}
+          </p>
+          <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>
+            Termina em {new Date(b.ends_at).toLocaleDateString("pt-BR")}
+          </p>
+        </Card>
+      ))}
+    </div>)}
+
+    {selectedFriend&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={()=>setSelectedFriend(null)}>
+        <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px"}} onClick={e=>e.stopPropagation()}>
+          <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+          <p style={{color:T.text,fontSize:"16px",fontWeight:700,fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>⚔️ Desafiar @{selectedFriend.username}</p>
+          {battleTypes.map(bt=>(
+            <button key={bt.id} onClick={()=>createBattle(selectedFriend.id,bt.id)} style={{width:"100%",background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",padding:"14px",marginBottom:"8px",cursor:"pointer",textAlign:"left"}}>
+              <p style={{color:T.text,fontSize:"13px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>{bt.label}</p>
+              <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{bt.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>);
 }
 function HistoryModal({machine,history,theme,onClose}){
   const sorted=[...history].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -380,19 +742,81 @@ function MetricsView({sessions,theme}){
 
 export default function Pumpi(){
   const [data,setData]=useState({sessions:[]});
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
   const [activeSession,setActiveSession]=useState(null);
   const [tab,setTab]=useState("home");
   const [loaded,setLoaded]=useState(false);
   const [theme,setTheme]=useState(getTimeTheme());
   const [celebration,setCelebration]=useState(false);
+  const [showManual,setShowManual]=useState(false);
   const T=theme;
+
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
-  useEffect(()=>{(async()=>{try{const s=await window.storage.get(STORAGE_KEY);if(s?.value)setData(JSON.parse(s.value));}catch{}setLoaded(true);})();},[]);
-  const save=async nd=>{setData(nd);try{await window.storage.set(STORAGE_KEY,JSON.stringify(nd));}catch{}};
-  const newSession=()=>{const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};save({...data,sessions:[s,...data.sessions]});setActiveSession(s.id);setTab("session");};
-  const updateSession=updated=>{save({...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)});setActiveSession(updated.id);};
-  const finishSession=()=>{const s=data.sessions.find(s=>s.id===activeSession);if(!s)return;const updated={...s,status:"done",finishedAt:Date.now()};save({...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)});setCelebration(true);};
+
+  useEffect(()=>{
+    (async()=>{
+      const{data:{session}}=await supabase.auth.getSession();
+      if(session?.user){
+        setUser(session.user);
+        await loadData(session.user.id);
+      } else {
+        try{const s=await window.storage.get(STORAGE_KEY);if(s?.value)setData(JSON.parse(s.value));}catch{}
+      }
+      setLoaded(true);
+    })();
+    supabase.auth.onAuthStateChange(async(_,session)=>{
+      if(session?.user){setUser(session.user);await loadData(session.user.id);}
+      else{setUser(null);}
+    });
+  },[]);
+
+  const loadData=async(uid)=>{
+    const{data:prof}=await supabase.from("profiles").select("*").eq("id",uid).single();
+    if(prof) setProfile(prof);
+    const{data:rows}=await supabase.from("sessions").select("*").eq("user_id",uid).order("id",{ascending:false});
+    if(rows) setData({sessions:rows.map(r=>({...r.data,id:r.id}))});
+    else{try{const s=await window.storage.get(STORAGE_KEY);if(s?.value)setData(JSON.parse(s.value));}catch{}}
+  };
+
+  const save=async(nd)=>{
+    setData(nd);
+    if(user){
+      for(const s of nd.sessions){
+        await supabase.from("sessions").upsert({id:s.id,user_id:user.id,data:s},{onConflict:"id"});
+      }
+    } else {
+      try{await window.storage.set(STORAGE_KEY,JSON.stringify(nd));}catch{}
+    }
+  };
+
+  const newSession=()=>{
+    const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
+    save({...data,sessions:[s,...data.sessions]});
+    setActiveSession(s.id); setTab("session");
+  };
+
+  const updateSession=updated=>{
+    save({...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)});
+    setActiveSession(updated.id);
+  };
+
+  const finishSession=()=>{
+    const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
+    const updated={...s,status:"done",finishedAt:Date.now()};
+    save({...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)});
+    setCelebration(true);
+  };
+
   const deleteSession=id=>{save({...data,sessions:data.sessions.filter(s=>s.id!==id)});setTab("home");};
+
+  const saveManualSession=session=>{
+    save({...data,sessions:[session,...data.sessions]});
+    setShowManual(false);
+  };
+
+  const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setData({sessions:[]});};
+
   const currentSession=data.sessions.find(s=>s.id===activeSession);
   const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
   const statusBadge=s=>{
@@ -400,7 +824,10 @@ export default function Pumpi(){
     if(s.status==="active") return{label:"🔥 Em andamento",color:T.accent,bg:`${T.accent}18`};
     return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
   };
-  if(!loaded) return <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:T.accent,fontFamily:"'DM Sans',sans-serif"}}>🍑</span></div>;
+
+  if(!loaded) return <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:"40px"}}>🍑</span></div>;
+  if(!user) return <LoginScreen theme={T} onLogin={()=>loadData(user?.id)}/>;
+
   return(
     <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
       <style>{`
@@ -408,11 +835,15 @@ export default function Pumpi(){
         *{box-sizing:border-box;margin:0;padding:0;}
         input::placeholder{color:${T.textMuted}!important;}
         input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+        input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
         select option{background:${T.modalBg};color:${T.text};}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
       `}</style>
+
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
+      {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
+
       <div style={{padding:"calc(env(safe-area-inset-top) + 20px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           {tab==="session"?(
@@ -421,21 +852,30 @@ export default function Pumpi(){
             <div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
                 <span style={{fontSize:"16px"}}>🍑</span>
-                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif",letterSpacing:"-0.3px"}}>Pumpi</span>
-                <span style={{color:T.textMuted,fontSize:"10px",letterSpacing:"1px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
+                <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
               </div>
-              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>Progresso de Treino</p>
+              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>
+                {profile?`@${profile.username}`:"Progresso de Treino"}
+              </p>
             </div>
           )}
-          {tab==="home"&&<button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova Sessão</button>}
+          {tab==="home"&&(
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setShowManual(true)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",color:T.textSub,fontWeight:600,fontSize:"12px",padding:"10px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>📅 Manual</button>
+              <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
+            </div>
+          )}
           {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
+          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
         </div>
       </div>
+
       <div style={{padding:"20px"}}>
         {tab==="home"&&(data.sessions.length===0?(
           <div style={{textAlign:"center",padding:"70px 20px"}}>
             <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
-            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova Sessão" para começar.</p>
+            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
           </div>
         ):data.sessions.map(s=>{
           const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
@@ -444,7 +884,7 @@ export default function Pumpi(){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
                 <div>
                   <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
-                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}</p>
+                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
                 </div>
                 <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
               </div>
@@ -453,11 +893,13 @@ export default function Pumpi(){
           );
         }))}
         {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession} data={data.sessions}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
-        {tab==="metrics"&&<MetricsView sessions={data.sessions} theme={T}/>}
+        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
+        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
+
       {tab!=="session"&&(
         <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20}}>
-          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
+          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯"},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
             <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
               <span style={{fontSize:"20px"}}>{n.icon}</span>
               <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
@@ -469,3 +911,4 @@ export default function Pumpi(){
     </div>
   );
 }
+
