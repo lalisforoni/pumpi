@@ -3,7 +3,27 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYmR2cHBhdGFzdWN5YnpmemV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDI1NTUsImV4cCI6MjA5NDUxODU1NX0.H4lPCHC-bdlrf1JEXzWd1x-kzHeSdpFq6UFIepjhGUk";
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    storageKey: "pumpi_auth",
+    storage: {
+      getItem: async (key) => {
+        try {
+          const s = await window.storage.get(key);
+          return s?.value || null;
+        } catch { return null; }
+      },
+      setItem: async (key, value) => {
+        try { await window.storage.set(key, value); } catch {}
+      },
+      removeItem: async (key) => {
+        try { await window.storage.delete(key); } catch {}
+      },
+    },
+  },
+});
+
 
 const STORAGE_KEY = "pumpi_v1";
 const defaultMachines = {
