@@ -851,9 +851,10 @@ export default function Pumpi(){
 
   return(
     <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
-      <style>{`
+    <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
         input::placeholder{color:${T.textMuted}!important;}
         input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
         input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
@@ -862,10 +863,11 @@ export default function Pumpi(){
         ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
       `}</style>
 
+
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
       {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
 
-      <div style={{padding:"calc(env(safe-area-inset-top) + 20px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
+      <div style={{paddingTop:"max(env(safe-area-inset-top), 20px)",paddingLeft:"20px",paddingRight:"20px",paddingBottom:"16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           {tab==="session"?(
             <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
