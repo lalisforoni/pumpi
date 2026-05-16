@@ -408,7 +408,7 @@ export default function Pumpi(){
         ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
       `}</style>
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
-      <div style={{padding:"20px 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
+      <div style={{padding:"calc(env(safe-area-inset-top) + 20px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           {tab==="session"?(
             <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
