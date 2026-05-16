@@ -271,8 +271,8 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
             {g.list.map(ex=>(
               <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 70px 55px 70px 30px",gap:"5px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
                 <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}</span>
-                <input type="text" placeholder="kg" defaultValue={ex.weight} onBlur={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
-                <input type="number" placeholder="RP" defaultValue={ex.rp} onBlur={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
+                <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
+                 <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
                 <select defaultValue={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px"}}>
                   <option value="">rep</option>
                   {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
