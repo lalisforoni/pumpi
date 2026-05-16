@@ -200,7 +200,7 @@ function AddMachineModal({group,onAdd,onClose,existingMachines,theme}){
   );
 }
 
-function SessionView({session,onUpdate,theme,onFinish}){
+function SessionView({session,onUpdate,theme,onFinish,data}){
   const [modal,setModal]=useState(null);
   const [histModal,setHistModal]=useState(null);
   const readonly=session.status==="done";
@@ -208,12 +208,12 @@ function SessionView({session,onUpdate,theme,onFinish}){
   const timer=useTimer(session.startedAt,isActive);
   const dur=calcDuration(session.startedAt,session.finishedAt);
   const addEx=(group,machine)=>{
-  const allExs=data.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
-  const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const lastEntry=allHist[0];
-  onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",weightHistory:[]}]});
-  setModal(null);
-};
+    const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
+    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const lastEntry=allHist[0];
+    onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",weightHistory:[]}]});
+    setModal(null);
+  };
   const updEx=(group,id,data)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...data}:e)});
   const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
   const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
@@ -269,7 +269,6 @@ function SessionView({session,onUpdate,theme,onFinish}){
     </div>
   );
 }
-
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
@@ -453,7 +452,7 @@ export default function Pumpi(){
             </div>
           );
         }))}
-        {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
+        {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession} data={data.sessions}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
         {tab==="metrics"&&<MetricsView sessions={data.sessions} theme={T}/>}
       </div>
       {tab!=="session"&&(
