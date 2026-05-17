@@ -148,7 +148,7 @@ function LoginScreen({theme,onLogin}){
     setLoading(true);
     const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://pumpi-two.vercel.app"});
     if(error) setError(error.message);
-    else setSuccess("Email de recuperação enviado! Verifique sua caixa de entrada. 🍑");
+    else setSuccess("Email de recuperação enviado! 🍑");
     setLoading(false);
   };
 
@@ -204,9 +204,9 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
     else setUpper(p=>[...p,ex]);
     setAddingGroup(null); setCustomMachine("");
   };
-  const updEx=(group,id,data)=>{
-    if(group==="lower") setLower(p=>p.map(e=>e.id===id?{...e,...data}:e));
-    else setUpper(p=>p.map(e=>e.id===id?{...e,...data}:e));
+  const updEx=(group,id,val)=>{
+    if(group==="lower") setLower(p=>p.map(e=>e.id===id?{...e,...val}:e));
+    else setUpper(p=>p.map(e=>e.id===id?{...e,...val}:e));
   };
   const delEx=(group,id)=>{
     if(group==="lower") setLower(p=>p.filter(e=>e.id!==id));
@@ -272,8 +272,8 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
               <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 70px 55px 70px 30px",gap:"5px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
                 <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}</span>
                 <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
-                 <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
-                <select defaultValue={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px"}}>
+                <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
+                <select value={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px"}}>
                   <option value="">rep</option>
                   {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
                 </select>
@@ -587,7 +587,7 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
     onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",weightHistory:[]}]});
     setModal(null);
   };
-  const updEx=(group,id,data)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...data}:e)});
+  const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
   const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
   const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
   const histEx=histModal?[...(session.lower||[]),...(session.upper||[])].find(e=>e.id===histModal):null;
@@ -630,7 +630,7 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
             </div>
           ):(session[g.key]||[]).map(ex=>(
             <ExerciseRow key={ex.id} exercise={ex} theme={theme} readonly={readonly}
-              onChange={data=>updEx(g.key,ex.id,data)}
+              onChange={d=>updEx(g.key,ex.id,d)}
               onDelete={()=>delEx(g.key,ex.id)}
               onShowHistory={()=>setHistModal(ex.id)}
             />
@@ -761,6 +761,8 @@ export default function Pumpi(){
   const [theme,setTheme]=useState(getTimeTheme());
   const [celebration,setCelebration]=useState(false);
   const [showManual,setShowManual]=useState(false);
+  const [refreshing,setRefreshing]=useState(false);
+  const touchStartY=useRef(0);
   const T=theme;
 
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
@@ -801,42 +803,71 @@ export default function Pumpi(){
     }
   };
 
+  // ── SAVE: upsert individual session, never re-upsert deleted ones ──
+  const saveSession=async(session,uid=user?.id)=>{
+    if(uid){
+      await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+    }
+  };
+
   const save=async(nd)=>{
     setData(nd);
-    if(user){
-      const upserts=nd.sessions.map(s=>({id:s.id,user_id:user.id,data:s}));
-      await supabase.from("sessions").upsert(upserts,{onConflict:"id"});
-    }
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(nd));}catch{}
   };
 
-  const newSession=()=>{
+  const newSession=async()=>{
     const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
-    save({...data,sessions:[s,...data.sessions]});
+    const nd={...data,sessions:[s,...data.sessions]};
+    await save(nd);
+    await saveSession(s);
     setActiveSession(s.id); setTab("session");
   };
 
-  const updateSession=updated=>{
-    save({...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)});
+  const updateSession=async(updated)=>{
+    const nd={...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)};
+    await save(nd);
+    await saveSession(updated);
     setActiveSession(updated.id);
   };
 
-  const finishSession=()=>{
+  const finishSession=async()=>{
     const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
     const updated={...s,status:"done",finishedAt:Date.now()};
-    save({...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)});
+    const nd={...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)};
+    await save(nd);
+    await saveSession(updated);
     setCelebration(true);
   };
 
   const deleteSession=async(id)=>{
-  save({...data,sessions:data.sessions.filter(s=>s.id!==id)});
-  if(user){
-    await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
-  }
-  setTab("home");
-};
-  const saveManualSession=session=>{save({...data,sessions:[session,...data.sessions]});setShowManual(false);};
-  const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setData({sessions:[]});try{localStorage.removeItem(STORAGE_KEY);}catch{}};
+    const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
+    await save(nd);
+    if(user){
+      await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
+    }
+    setTab("home");
+  };
+
+  const saveManualSession=async(session)=>{
+    const nd={...data,sessions:[session,...data.sessions]};
+    await save(nd);
+    await saveSession(session);
+    setShowManual(false);
+  };
+
+  const logout=async()=>{
+    await supabase.auth.signOut();
+    setUser(null); setProfile(null); setData({sessions:[]});
+    try{localStorage.removeItem(STORAGE_KEY);}catch{}
+  };
+
+  const handleRefresh=async()=>{
+    if(refreshing) return;
+    setRefreshing(true);
+    if(user) await loadData(user.id);
+    else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
+    setTimeout(()=>setRefreshing(false),600);
+  };
 
   const currentSession=data.sessions.find(s=>s.id===activeSession);
   const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
@@ -866,6 +897,7 @@ export default function Pumpi(){
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
       {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
 
+      {/* HEADER */}
       <div style={{padding:"calc(env(safe-area-inset-top) + 16px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           {tab==="session"?(
@@ -891,7 +923,21 @@ export default function Pumpi(){
         </div>
       </div>
 
-      <div style={{padding:"20px"}}>
+      {/* PULL TO REFRESH */}
+      {refreshing&&(
+        <div style={{textAlign:"center",padding:"12px",color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif"}}>
+          🔄 Atualizando...
+        </div>
+      )}
+
+      {/* CONTENT */}
+      <div style={{padding:"20px"}}
+        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
+        onTouchEnd={e=>{
+          const dy=e.changedTouches[0].clientY-touchStartY.current;
+          if(dy>80&&tab!=="session") handleRefresh();
+        }}
+      >
         {tab==="home"&&(data.sessions.length===0?(
           <div style={{textAlign:"center",padding:"70px 20px"}}>
             <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
@@ -917,6 +963,7 @@ export default function Pumpi(){
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
 
+      {/* BOTTOM NAV */}
       {tab!=="session"&&(
         <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
           {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯"},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
@@ -931,3 +978,4 @@ export default function Pumpi(){
     </div>
   );
 }
+
