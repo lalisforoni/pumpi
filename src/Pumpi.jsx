@@ -866,7 +866,7 @@ export default function Pumpi(){
     setRefreshing(true);
     if(user) await loadData(user.id);
     else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
-    setTimeout(()=>setRefreshing(false),600);
+    setRefreshing(false);
   };
 
   const currentSession=data.sessions.find(s=>s.id===activeSession);
