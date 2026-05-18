@@ -955,4 +955,56 @@ export default function Pumpi(){
               <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
             </div>
           )}
-          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",
+          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
+          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
+        </div>
+      </div>
+
+      {refreshing&&<div style={{textAlign:"center",padding:"12px",color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif"}}>🔄 Atualizando...</div>}
+
+      <div style={{padding:"20px"}}
+        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
+        onTouchEnd={e=>{const dy=e.changedTouches[0].clientY-touchStartY.current;if(dy>80&&tab!=="session")handleRefresh();}}
+      >
+        {tab==="home"&&(data.sessions.length===0?(
+          <div style={{textAlign:"center",padding:"70px 20px"}}>
+            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
+            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
+          </div>
+        ):data.sessions.map(s=>{
+          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
+          return(
+            <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
+                <div>
+                  <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
+                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
+                </div>
+                <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
+              </div>
+              {total>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[...(s.lower||[]),...(s.upper||[])].slice(0,4).map((ex,i)=><span key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"6px",padding:"3px 8px",color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` · ${ex.weight}kg`:""}</span>)}{total>4&&<span style={{color:T.textMuted,fontSize:"11px",padding:"3px 0",fontFamily:"'DM Sans',sans-serif"}}>+{total-4} mais</span>}</div>}
+            </div>
+          );
+        }))}
+        {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession} data={data.sessions}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
+        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
+        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
+      </div>
+
+      {tab!=="session"&&(
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
+          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+              <div style={{position:"relative",display:"inline-block"}}>
+                <span style={{fontSize:"20px"}}>{n.icon}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:"-4px",right:"-8px",background:"#ff6b6b",color:"#fff",fontSize:"9px",fontWeight:800,padding:"1px 5px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>{n.badge}</span>}
+              </div>
+              <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
+              {tab===n.id&&<div style={{width:"20px",height:"2px",background:T.accent,borderRadius:"1px"}}/>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
