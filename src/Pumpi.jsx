@@ -222,13 +222,7 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
     const dur=durMin?parseInt(durMin)*60000:0;
     const addHistory=(exs)=>exs.map(ex=>({
       ...ex,
-      weightHistory: ex.weight ? [{
-        weight: ex.weight,
-        reps: ex.reps,
-        rp: ex.rp,
-        series: ex.series,
-        date: dateObj.toISOString(),
-      }] : [],
+      weightHistory: ex.weight ? [{weight:ex.weight,reps:ex.reps,rp:ex.rp,series:ex.series,date:dateObj.toISOString()}] : [],
     }));
     const session={
       id:Date.now(),
@@ -613,15 +607,16 @@ function AddMachineModal({group,onAdd,onClose,existingMachines,theme}){
   );
 }
 
-function SessionView({session,onUpdate,theme,onFinish,data}){
+function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
   const [modal,setModal]=useState(null);
   const [histModal,setHistModal]=useState(null);
-  const readonly=session.status==="done";
+  const [editMode,setEditMode]=useState(false);
+  const readonly=session.status==="done"&&!editMode;
   const isActive=session.status==="active";
-  // Treino manual reaberto: não roda timer, não mostra timer
   const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null;
   const timer=useTimer(session.startedAt,isActive&&!isManualReopened);
   const dur=calcDuration(session.startedAt,session.finishedAt);
+
   const addEx=(group,machine)=>{
     const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
     const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -631,8 +626,15 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
   };
   const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
   const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
+
+  const handleSaveEdit=()=>{
+    onSave(session);
+    setEditMode(false);
+  };
+
   const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
   const histEx=histModal?[...(session.lower||[]),...(session.upper||[])].find(e=>e.id===histModal):null;
+
   return(
     <div>
       <div style={{borderRadius:"16px",marginBottom:"20px",border:session.status==="done"?`1px solid ${theme.green}40`:session.status==="active"?`1px solid ${theme.accent}35`:`1px solid ${theme.bgCardBorder}`,background:session.status==="done"?`${theme.green}10`:session.status==="active"?`${theme.accent}08`:theme.bgCard}}>
@@ -641,17 +643,24 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
             <span style={{fontSize:"22px"}}>{session.status==="done"?"✅":session.status==="active"?"🔥":"⏸️"}</span>
             <div>
               <p style={{color:session.status==="done"?theme.green:session.status==="active"?theme.accent:theme.textSub,fontSize:"11px",fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"1.5px"}}>
-                {session.status==="done"?"Treino Finalizado":session.status==="active"?"Em Andamento":"Não Iniciado"}
+                {session.status==="done"?(editMode?"Modo Edição ✏️":"Treino Finalizado"):session.status==="active"?"Em Andamento":"Não Iniciado"}
               </p>
               {isActive&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
               {isActive&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
-              {session.status==="done"&&dur&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
+              {session.status==="done"&&dur&&!editMode&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
               {session.status==="pending"&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Toque em Iniciar quando estiver pronto</p>}
             </div>
           </div>
-          {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
-          {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
-          {session.status==="done"&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
+          <div style={{display:"flex",gap:"6px"}}>
+            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
+            {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
+            {session.status==="done"&&session.manual&&(
+              editMode
+                ? <button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
+                : <button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
+            )}
+            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
+          </div>
         </div>
       </div>
       {groups.map(g=>(
@@ -809,15 +818,12 @@ export default function Pumpi(){
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
   useEffect(()=>{
-    // Registra service worker para atualizações automáticas
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('/sw.js').then(reg=>{
         reg.addEventListener('updatefound',()=>{
           const nw=reg.installing;
           nw.addEventListener('statechange',()=>{
-            if(nw.state==='installed'&&navigator.serviceWorker.controller){
-              window.location.reload();
-            }
+            if(nw.state==='installed'&&navigator.serviceWorker.controller) window.location.reload();
           });
         });
       }).catch(()=>{});
@@ -860,9 +866,7 @@ export default function Pumpi(){
   };
 
   const saveSession=async(session,uid=user?.id)=>{
-    if(uid){
-      await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
-    }
+    if(uid) await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
   };
 
   const save=async(nd)=>{
@@ -997,7 +1001,19 @@ export default function Pumpi(){
             </div>
           );
         }))}
-        {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession} data={data.sessions}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
+        {tab==="session"&&currentSession&&(
+          <>
+            <SessionView
+              session={currentSession}
+              onUpdate={updateSession}
+              onSave={saveSession}
+              theme={T}
+              onFinish={finishSession}
+              data={data.sessions}
+            />
+            <button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button>
+          </>
+        )}
         {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
