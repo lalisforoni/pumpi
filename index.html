@@ -15,6 +15,23 @@
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#0e0a16" />
   </head>
+  
+  <script>
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/sw.js').then(reg=>{
+      reg.addEventListener('updatefound',()=>{
+        const newWorker=reg.installing;
+        newWorker.addEventListener('statechange',()=>{
+          if(newWorker.state==='installed'&&navigator.serviceWorker.controller){
+            newWorker.postMessage({type:'SKIP_WAITING'});
+            window.location.reload();
+          }
+        });
+      });
+    });
+  }
+  </script>
+
   <body style="margin:0;padding:0;background:#0e0a16;">
     <div id="root"></div>
     <script type="module" src="./src/main.jsx"></script>
