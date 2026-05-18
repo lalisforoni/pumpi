@@ -134,20 +134,14 @@ function LoginScreen({theme,onLogin}){
         const{data,error}=await supabase.auth.signUp({email,password});
         if(error) throw error;
         if(data.user){
-          // Salva profile independente de ter session ou não
-          const{error:profError}=await supabase.from("profiles").upsert({
+          await supabase.from("profiles").upsert({
             id:data.user.id,
             username:username.trim().toLowerCase(),
             email:email.trim().toLowerCase()
           },{onConflict:"id"});
-        
-        if(data.session){
-          onLogin(data.user);
-        } else {
-          setSuccess("Conta criada! Verifique seu email para confirmar. 🍑");
+          if(data.session) onLogin(data.user);
+          else setSuccess("Conta criada! Verifique seu email para confirmar. 🍑");
         }
-      }
-
       }
     } catch(e){ setError(e.message||"Erro ao entrar"); }
     setLoading(false);
@@ -156,7 +150,7 @@ function LoginScreen({theme,onLogin}){
   const handleForgotPassword=async()=>{
     if(!email){setError("Digite seu email primeiro!");return;}
     setLoading(true);
-    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://pumpi-two.vercel.app"});
+    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://pumpi-two.vercel.app/confirmed.html"});
     if(error) setError(error.message);
     else setSuccess("Email de recuperação enviado! 🍑");
     setLoading(false);
@@ -209,7 +203,7 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
     const allExs=allSessions.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
     const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
     const last=allHist[0];
-    const ex={id:Date.now(),machine,weight:last?.weight||"",rp:last?.rp||"",reps:last?.reps||"",weightHistory:[]};
+    const ex={id:Date.now(),machine,weight:last?.weight||"",rp:last?.rp||"",reps:last?.reps||"",series:"",weightHistory:[]};
     if(group==="lower") setLower(p=>[...p,ex]);
     else setUpper(p=>[...p,ex]);
     setAddingGroup(null); setCustomMachine("");
@@ -226,13 +220,24 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
   const handleSave=()=>{
     const dateObj=new Date(date+"T12:00:00");
     const dur=durMin?parseInt(durMin)*60000:0;
+    const addHistory=(exs)=>exs.map(ex=>({
+      ...ex,
+      weightHistory: ex.weight ? [{
+        weight: ex.weight,
+        reps: ex.reps,
+        rp: ex.rp,
+        series: ex.series,
+        date: dateObj.toISOString(),
+      }] : [],
+    }));
     const session={
       id:Date.now(),
       date:dateObj.toISOString(),
       status:"done",
       startedAt:dateObj.getTime(),
       finishedAt:dateObj.getTime()+dur,
-      lower,upper,
+      lower:addHistory(lower),
+      upper:addHistory(upper),
       manual:true,
     };
     onSave(session);
@@ -278,16 +283,24 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
                 </div>
               </>
             )}
+            {g.list.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",padding:"4px 8px",marginBottom:"4px"}}>
+                {["Máquina","Peso","Séries","Reps","RP",""].map((h,i)=>(
+                  <span key={i} style={{color:T.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:i>0?"center":"left",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
+                ))}
+              </div>
+            )}
             {g.list.map(ex=>(
-              <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 70px 55px 70px 30px",gap:"5px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
-                <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}</span>
-                <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
-                <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px"}}/>
-                <select value={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px"}}>
+              <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
+                <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.machine}</span>
+                <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.accent}}/>
+                <input type="number" placeholder="4" value={ex.series} onChange={e=>updEx(g.key,ex.id,{series:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
+                <select value={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px",color:T.blue}}>
                   <option value="">rep</option>
                   {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
                 </select>
-                <button onClick={()=>delEx(g.key,ex.id)} style={{background:"rgba(255,80,80,0.1)",border:"none",borderRadius:"6px",color:"#ff6b6b",fontSize:"14px",cursor:"pointer",padding:"4px 0",width:"30px"}}>×</button>
+                <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
+                <button onClick={()=>delEx(g.key,ex.id)} style={{background:"rgba(255,80,80,0.1)",border:"none",borderRadius:"6px",color:"#ff6b6b",fontSize:"14px",cursor:"pointer",padding:"4px 0",width:"28px"}}>×</button>
               </div>
             ))}
           </div>
@@ -381,7 +394,7 @@ function FriendsView({theme,user,sessions}){
     <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"3px",marginBottom:"16px",border:`1px solid ${T.bgCardBorder}`}}>
       {["friends","battles","add"].map(t=>(
         <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",background:tab===t?T.accent:"transparent",border:"none",borderRadius:"8px",color:tab===t?T.accentText:T.textSub,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-          {t==="friends"?"Amigos":t==="battles"?"Batalhas":"+ Adicionar"}
+          {t==="friends"?`Amigos${pending.length>0?` (${pending.length})`:""}`:t==="battles"?"Batalhas":"+ Adicionar"}
         </button>
       ))}
     </div>
@@ -508,7 +521,14 @@ function HistoryModal({machine,history,theme,onClose}){
         <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
           {sorted.map((h,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",background:theme.bgCard,borderRadius:"10px",border:`1px solid ${theme.bgCardBorder}`}}>
-              <div><p style={{color:theme.text,fontSize:"16px",fontWeight:600,margin:0,fontFamily:"'DM Mono',monospace"}}>{h.weight}kg</p>{h.reps&&<p style={{color:theme.textSub,fontSize:"11px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{h.reps} reps{h.rp?` · RP ${h.rp}`:""}</p>}</div>
+              <div>
+                <p style={{color:theme.text,fontSize:"16px",fontWeight:600,margin:0,fontFamily:"'DM Mono',monospace"}}>{h.weight}kg</p>
+                <p style={{color:theme.textSub,fontSize:"11px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>
+                  {h.series?`${h.series} séries · `:""}
+                  {h.reps?`${h.reps} reps`:""}
+                  {h.rp?` · RP ${h.rp}`:""}
+                </p>
+              </div>
               <div style={{textAlign:"right"}}><p style={{color:theme.textSub,fontSize:"12px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{fmtF(h.date)}</p>{i===0&&<span style={{background:`${theme.accent}20`,color:theme.accent,fontSize:"10px",padding:"2px 7px",borderRadius:"5px"}}>atual</span>}</div>
             </div>
           ))}
@@ -526,14 +546,14 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
   const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
   const handleBlur=val=>{
     if(val&&val!==prevW){
-      const entry={weight:val,reps:exercise.reps,rp:exercise.rp,date:new Date().toISOString()};
+      const entry={weight:val,reps:exercise.reps,rp:exercise.rp,series:exercise.series,date:new Date().toISOString()};
       onChange({...exercise,weight:val,weightHistory:[...(exercise.weightHistory||[]),entry]});
       setPrevW(val);
     }
   };
   return(
     <div style={{padding:"10px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`,marginBottom:"8px",opacity:readonly?.72:1}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 80px 60px 80px 36px",gap:"6px",alignItems:"center"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",alignItems:"center"}}>
         <div>
           <span style={{color:theme.text,fontSize:"13px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{exercise.machine}</span>
           {last&&<p style={{color:theme.textMuted,fontSize:"10px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>atualizado {fmt(last.date)}</p>}
@@ -541,20 +561,29 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
         <input type="text" placeholder="kg" defaultValue={exercise.weight} disabled={readonly}
           onBlur={e=>!readonly&&handleBlur(e.target.value)}
           onChange={e=>!readonly&&onChange({...exercise,weight:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.accent,fontSize:"13px",padding:"6px 7px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.accent,fontSize:"13px",padding:"6px 5px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         />
-        <input type="number" placeholder="RP" value={exercise.rp} disabled={readonly}
-          onChange={e=>!readonly&&onChange({...exercise,rp:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 7px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        <input type="number" placeholder="Sér" value={exercise.series||""} disabled={readonly}
+          onChange={e=>!readonly&&onChange({...exercise,series:e.target.value})}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         />
         <select value={exercise.reps} disabled={readonly}
           onChange={e=>!readonly&&onChange({...exercise,reps:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.blue,fontSize:"12px",padding:"6px 3px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.blue,fontSize:"11px",padding:"6px 2px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         >
           <option value="">rep</option>
           {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
         </select>
+        <input type="number" placeholder="RP" value={exercise.rp} disabled={readonly}
+          onChange={e=>!readonly&&onChange({...exercise,rp:e.target.value})}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        />
         <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?.4:1}}>×</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"2px 0 0"}}>
+        {["","Peso","Séries","Reps","RP",""].map((h,i)=>(
+          <span key={i} style={{color:theme.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
+        ))}
       </div>
       <button onClick={onShowHistory} style={{marginTop:"8px",width:"100%",background:hasH?`${theme.accent}10`:"transparent",border:hasH?`1px solid ${theme.accent}25`:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",padding:"6px",color:hasH?theme.accent:theme.textMuted,fontSize:"11px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"5px"}}>
         <span>📈</span>{hasH?`Ver evolução · ${(exercise.weightHistory||[]).length} registros`:"Sem histórico ainda"}
@@ -594,7 +623,7 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
     const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
     const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
     const lastEntry=allHist[0];
-    onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",weightHistory:[]}]});
+    onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",series:lastEntry?.series||"",weightHistory:[]}]});
     setModal(null);
   };
   const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
@@ -630,9 +659,6 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
               <span style={{color:theme.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>({session[g.key]?.length||0})</span>
             </div>
             {!readonly&&<button onClick={()=>setModal(g.key)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",color:theme.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>}
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 80px 60px 80px 36px",gap:"6px",padding:"4px 10px",marginBottom:"4px"}}>
-            {["Máquina","Peso","RP","Reps",""].map((h,i)=><span key={i} style={{color:theme.textMuted,fontSize:"10px",textTransform:"uppercase",letterSpacing:"1.5px",textAlign:i>0?"center":"left",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>)}
           </div>
           {(session[g.key]||[]).length===0?(
             <div style={{textAlign:"center",padding:"18px",color:theme.textMuted,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",border:`1px dashed ${theme.bgCardBorder}`,borderRadius:"10px"}}>
@@ -771,6 +797,7 @@ export default function Pumpi(){
   const [theme,setTheme]=useState(getTimeTheme());
   const [celebration,setCelebration]=useState(false);
   const [showManual,setShowManual]=useState(false);
+  const [pendingCount,setPendingCount]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
   const touchStartY=useRef(0);
   const T=theme;
@@ -786,7 +813,7 @@ export default function Pumpi(){
     })();
     const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
       if(event==="SIGNED_IN"&&session?.user){setUser(session.user);await loadData(session.user.id);}
-      else if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setData({sessions:[]});}
+      else if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setData({sessions:[]});setPendingCount(0);}
     });
     return()=>subscription.unsubscribe();
   },[]);
@@ -811,9 +838,10 @@ export default function Pumpi(){
         }
       }catch{}
     }
+    const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
+    if(pending) setPendingCount(pending.length);
   };
 
-  // ── SAVE: upsert individual session, never re-upsert deleted ones ──
   const saveSession=async(session,uid=user?.id)=>{
     if(uid){
       await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
@@ -867,7 +895,7 @@ export default function Pumpi(){
 
   const logout=async()=>{
     await supabase.auth.signOut();
-    setUser(null); setProfile(null); setData({sessions:[]});
+    setUser(null); setProfile(null); setData({sessions:[]}); setPendingCount(0);
     try{localStorage.removeItem(STORAGE_KEY);}catch{}
   };
 
@@ -907,7 +935,6 @@ export default function Pumpi(){
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
       {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
 
-      {/* HEADER */}
       <div style={{padding:"calc(env(safe-area-inset-top) + 16px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           {tab==="session"?(
@@ -928,64 +955,4 @@ export default function Pumpi(){
               <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
             </div>
           )}
-          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
-          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
-        </div>
-      </div>
-
-      {/* PULL TO REFRESH */}
-      {refreshing&&(
-        <div style={{textAlign:"center",padding:"12px",color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif"}}>
-          🔄 Atualizando...
-        </div>
-      )}
-
-      {/* CONTENT */}
-      <div style={{padding:"20px"}}
-        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
-        onTouchEnd={e=>{
-          const dy=e.changedTouches[0].clientY-touchStartY.current;
-          if(dy>80&&tab!=="session") handleRefresh();
-        }}
-      >
-        {tab==="home"&&(data.sessions.length===0?(
-          <div style={{textAlign:"center",padding:"70px 20px"}}>
-            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
-            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
-          </div>
-        ):data.sessions.map(s=>{
-          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
-          return(
-            <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
-                <div>
-                  <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
-                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
-                </div>
-                <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
-              </div>
-              {total>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[...(s.lower||[]),...(s.upper||[])].slice(0,4).map((ex,i)=><span key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"6px",padding:"3px 8px",color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` · ${ex.weight}kg`:""}</span>)}{total>4&&<span style={{color:T.textMuted,fontSize:"11px",padding:"3px 0",fontFamily:"'DM Sans',sans-serif"}}>+{total-4} mais</span>}</div>}
-            </div>
-          );
-        }))}
-        {tab==="session"&&currentSession&&(<><SessionView session={currentSession} onUpdate={updateSession} theme={T} onFinish={finishSession} data={data.sessions}/><button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button></>)}
-        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
-        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
-      </div>
-
-      {/* BOTTOM NAV */}
-      {tab!=="session"&&(
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
-          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯"},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
-            <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
-              <span style={{fontSize:"20px"}}>{n.icon}</span>
-              <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
-              {tab===n.id&&<div style={{width:"20px",height:"2px",background:T.accent,borderRadius:"1px"}}/>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
+          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",
