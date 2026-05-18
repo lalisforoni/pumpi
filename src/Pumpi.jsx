@@ -524,7 +524,7 @@ function HistoryModal({machine,history,theme,onClose}){
               <div>
                 <p style={{color:theme.text,fontSize:"16px",fontWeight:600,margin:0,fontFamily:"'DM Mono',monospace"}}>{h.weight}kg</p>
                 <p style={{color:theme.textSub,fontSize:"11px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>
-                  {h.series?`${h.series} séries · `:""}
+                  {h.series?`${h.series}x · `:""}
                   {h.reps?`${h.reps} reps`:""}
                   {h.rp?` · RP ${h.rp}`:""}
                 </p>
@@ -580,8 +580,8 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
         />
         <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?.4:1}}>×</button>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"2px 0 0"}}>
-        {["","Peso","Séries","Reps","RP",""].map((h,i)=>(
+      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"3px 0 0"}}>
+        {["","Peso","Sér","Reps","RP",""].map((h,i)=>(
           <span key={i} style={{color:theme.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
         ))}
       </div>
@@ -617,7 +617,9 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
   const [histModal,setHistModal]=useState(null);
   const readonly=session.status==="done";
   const isActive=session.status==="active";
-  const timer=useTimer(session.startedAt,isActive);
+  // Treino manual reaberto não roda timer
+  const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null&&session.startedAt<Date.now()-60000*10;
+  const timer=useTimer(session.startedAt,isActive&&!isManualReopened);
   const dur=calcDuration(session.startedAt,session.finishedAt);
   const addEx=(group,machine)=>{
     const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
@@ -640,7 +642,8 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
               <p style={{color:session.status==="done"?theme.green:session.status==="active"?theme.accent:theme.textSub,fontSize:"11px",fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"1.5px"}}>
                 {session.status==="done"?"Treino Finalizado":session.status==="active"?"Em Andamento":"Não Iniciado"}
               </p>
-              {session.status==="active"&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
+              {session.status==="active"&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
+              {session.status==="active"&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
               {session.status==="done"&&dur&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
               {session.status==="pending"&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Toque em Iniciar quando estiver pronto</p>}
             </div>
