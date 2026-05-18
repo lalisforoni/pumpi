@@ -134,10 +134,20 @@ function LoginScreen({theme,onLogin}){
         const{data,error}=await supabase.auth.signUp({email,password});
         if(error) throw error;
         if(data.user){
-          await supabase.from("profiles").upsert({id:data.user.id,username,email});
-          if(data.session) onLogin(data.user);
-          else setSuccess("Conta criada! Verifique seu email para confirmar. 🍑");
+          // Salva profile independente de ter session ou não
+          const{error:profError}=await supabase.from("profiles").upsert({
+            id:data.user.id,
+            username:username.trim().toLowerCase(),
+            email:email.trim().toLowerCase()
+          },{onConflict:"id"});
+        
+        if(data.session){
+          onLogin(data.user);
+        } else {
+          setSuccess("Conta criada! Verifique seu email para confirmar. 🍑");
         }
+      }
+
       }
     } catch(e){ setError(e.message||"Erro ao entrar"); }
     setLoading(false);
