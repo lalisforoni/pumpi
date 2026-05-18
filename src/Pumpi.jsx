@@ -399,6 +399,37 @@ function FriendsView({theme,user,sessions}){
       ))}
     </div>
 
+    {tab==="friends"&&(<div>
+      {pending.length>0&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS PENDENTES</p>
+        {pending.map(p=>(
+          <Card key={p.id} style={{border:`1px solid ${T.accent}30`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.requesterUsername||"?"}</p>
+              <button onClick={()=>acceptRequest(p.id)} style={{background:T.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Aceitar</button>
+            </div>
+          </Card>
+        ))}
+        <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
+      </>)}
+      {friends.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
+          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
+        </div>
+      ):friends.map(f=>(
+        <Card key={f.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <div style={{width:"36px",height:"36px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍑</div>
+              <p style={{color:T.text,fontWeight:700,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{f.username}</p>
+            </div>
+            <button onClick={()=>setSelectedFriend(f)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.accent,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>⚔️ Desafiar</button>
+          </div>
+        </Card>
+      ))}
+    </div>)}
+
     {tab==="add"&&(<div>
       <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"8px",letterSpacing:"1.5px"}}>BUSCAR POR EMAIL</p>
       <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
@@ -420,36 +451,6 @@ function FriendsView({theme,user,sessions}){
         </Card>
       )}
       {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>Usuário não encontrado 😕</p>}
-      {pending.length>0&&(<>
-        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"16px 0 8px",letterSpacing:"1.5px"}}>PEDIDOS PENDENTES</p>
-        {pending.map(p=>(
-          <Card key={p.id}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.requesterUsername||"?"}</p>
-              <button onClick={()=>acceptRequest(p.id)} style={{background:T.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Aceitar ✓</button>
-            </div>
-          </Card>
-        ))}
-      </>)}
-    </div>)}
-
-    {tab==="friends"&&(<div>
-      {friends.length===0?(
-        <div style={{textAlign:"center",padding:"40px 20px"}}>
-          <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
-          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
-        </div>
-      ):friends.map(f=>(
-        <Card key={f.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-              <div style={{width:"36px",height:"36px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍑</div>
-              <p style={{color:T.text,fontWeight:700,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{f.username}</p>
-            </div>
-            <button onClick={()=>setSelectedFriend(f)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.accent,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>⚔️ Desafiar</button>
-          </div>
-        </Card>
-      ))}
     </div>)}
 
     {tab==="battles"&&(<div>
@@ -617,8 +618,8 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
   const [histModal,setHistModal]=useState(null);
   const readonly=session.status==="done";
   const isActive=session.status==="active";
-  // Treino manual reaberto não roda timer
-  const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null&&session.startedAt<Date.now()-60000*10;
+  // Treino manual reaberto: não roda timer, não mostra timer
+  const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null;
   const timer=useTimer(session.startedAt,isActive&&!isManualReopened);
   const dur=calcDuration(session.startedAt,session.finishedAt);
   const addEx=(group,machine)=>{
@@ -642,8 +643,8 @@ function SessionView({session,onUpdate,theme,onFinish,data}){
               <p style={{color:session.status==="done"?theme.green:session.status==="active"?theme.accent:theme.textSub,fontSize:"11px",fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"1.5px"}}>
                 {session.status==="done"?"Treino Finalizado":session.status==="active"?"Em Andamento":"Não Iniciado"}
               </p>
-              {session.status==="active"&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
-              {session.status==="active"&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
+              {isActive&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
+              {isActive&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
               {session.status==="done"&&dur&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
               {session.status==="pending"&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Toque em Iniciar quando estiver pronto</p>}
             </div>
@@ -808,6 +809,19 @@ export default function Pumpi(){
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
   useEffect(()=>{
+    // Registra service worker para atualizações automáticas
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').then(reg=>{
+        reg.addEventListener('updatefound',()=>{
+          const nw=reg.installing;
+          nw.addEventListener('statechange',()=>{
+            if(nw.state==='installed'&&navigator.serviceWorker.controller){
+              window.location.reload();
+            }
+          });
+        });
+      }).catch(()=>{});
+    }
     (async()=>{
       const{data:{session}}=await supabase.auth.getSession();
       if(session?.user){setUser(session.user);await loadData(session.user.id);}
@@ -859,15 +873,13 @@ export default function Pumpi(){
   const newSession=async()=>{
     const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
     const nd={...data,sessions:[s,...data.sessions]};
-    await save(nd);
-    await saveSession(s);
+    await save(nd); await saveSession(s);
     setActiveSession(s.id); setTab("session");
   };
 
   const updateSession=async(updated)=>{
     const nd={...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)};
-    await save(nd);
-    await saveSession(updated);
+    await save(nd); await saveSession(updated);
     setActiveSession(updated.id);
   };
 
@@ -875,24 +887,20 @@ export default function Pumpi(){
     const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
     const updated={...s,status:"done",finishedAt:Date.now()};
     const nd={...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)};
-    await save(nd);
-    await saveSession(updated);
+    await save(nd); await saveSession(updated);
     setCelebration(true);
   };
 
   const deleteSession=async(id)=>{
     const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
     await save(nd);
-    if(user){
-      await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
-    }
+    if(user) await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
     setTab("home");
   };
 
   const saveManualSession=async(session)=>{
     const nd={...data,sessions:[session,...data.sessions]};
-    await save(nd);
-    await saveSession(session);
+    await save(nd); await saveSession(session);
     setShowManual(false);
   };
 
