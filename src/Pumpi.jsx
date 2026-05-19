@@ -46,7 +46,7 @@ const PERSONAS = [
 ];
 const getPersona = name => {
   const n = name.toLowerCase();
-  return PERSONAS.find(p=>p.keys.some(k=>n.includes(k))) || {name,emoji:"🏋️",color:"#94a3b8"};
+  return PERSONAS.find(p=>p.keys.some(k=>n.includes(k))) || {name,emoji:"🏋",color:"#94a3b8"};
 };
 
 function getTimeTheme() {
@@ -54,7 +54,7 @@ function getTimeTheme() {
   if (h>=6&&h<11)  return {id:"manha", label:"Manhã",    icon:"🌅",bg:"#f5f0e8",bgCard:"rgba(0,0,0,0.04)",  bgCardBorder:"rgba(0,0,0,0.09)",  header:"#f5f0e8",text:"#2a2318",textSub:"#8a7a6a",textMuted:"#b8a898",accent:"#c8622a",accentText:"#fff",   green:"#2e7d52",blue:"#2a5f8a",inputBg:"rgba(0,0,0,0.06)",      inputBorder:"rgba(0,0,0,0.12)",      divider:"rgba(0,0,0,0.08)",      scrollThumb:"#ccc",   modalBg:"#ece7de",danger:"#b33"};
   if (h>=11&&h<17) return {id:"tarde", label:"Tarde",    icon:"☀️",bg:"#111108",bgCard:"rgba(255,220,60,0.04)",bgCardBorder:"rgba(255,200,40,0.1)",header:"#111108",text:"#f5e8c0",textSub:"#9a8050",textMuted:"#4a3820",accent:"#f0b84a",accentText:"#111108",green:"#7ec8a4",blue:"#a8bfd4",inputBg:"rgba(255,200,60,0.07)", inputBorder:"rgba(255,200,60,0.14)", divider:"rgba(255,200,60,0.08)", scrollThumb:"#3a3010",modalBg:"#1a1610",danger:"#ff6b6b"};
   if (h>=17&&h<21) return {id:"noite", label:"Noite",    icon:"🌆",bg:"#0e0a16",bgCard:"rgba(180,80,255,0.04)",bgCardBorder:"rgba(180,80,255,0.1)",header:"#0e0a16",text:"#e8d0f8",textSub:"#7a5888",textMuted:"#3a2848",accent:"#b870ff",accentText:"#0e0a16",green:"#7ec8a4",blue:"#ff9f60",inputBg:"rgba(180,80,255,0.08)",inputBorder:"rgba(180,80,255,0.14)",divider:"rgba(180,80,255,0.08)",scrollThumb:"#3a2050",modalBg:"#180e22",danger:"#ff6b6b"};
-  return              {id:"madrugada",label:"Madrugada",icon:"🌙",bg:"#060810",bgCard:"rgba(60,100,255,0.04)", bgCardBorder:"rgba(60,100,255,0.09)", header:"#060810",text:"#b8c8f0",textSub:"#3a4860",textMuted:"#1e2840",accent:"#4870ff",accentText:"#fff",   green:"#50a898",blue:"#7898e0",inputBg:"rgba(60,100,255,0.08)",  inputBorder:"rgba(60,100,255,0.14)", divider:"rgba(60,100,255,0.07)", scrollThumb:"#181e38",modalBg:"#0c1020",danger:"#ff6b6b"};
+  return              {id:"madrugada",label:"Madrugada",icon:"🌙",bg:"#060810",bgCard:"rgba(60,100,255,0.04)", bgCardBorder:"rgba(60,100,255,0.09)", header:"#060810",text:"#b8c8f0",textSub:"#3a4860",textMuted:"#1e2840",accent:"#4870ff",accentText:"#fff",   green:"#50a898",blue:"#7898e0",inputBg:"rgba(60,100,255,0.08)",  inputBorder:"rgba(60,100,255,0.14)", divider:"rgba(60,100,256,0.07)", scrollThumb:"#181e38",modalBg:"#0c1020",danger:"#ff6b6b"};
 }
 
 function useTimer(startedAt, active) {
@@ -312,6 +312,7 @@ function FriendsView({theme,user,sessions}){
   const [friends,setFriends]=useState([]);
   const [pending,setPending]=useState([]);
   const [battles,setBattles]=useState([]);
+  const [suggestions,setSuggestions]=useState([]);
   const [searchEmail,setSearchEmail]=useState("");
   const [searchResult,setSearchResult]=useState(null);
   const [searching,setSearching]=useState(false);
@@ -329,6 +330,16 @@ function FriendsView({theme,user,sessions}){
       });
       const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({...r,requesterUsername:r.requester?.username}));
       setFriends(accepted); setPending(pend);
+
+      // Carrega sugestões excluindo já amigos e eu mesmo
+      const friendIds=accepted.map(f=>f.id);
+      const pendingIds=reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id);
+      const excluded=[user.id,...friendIds,...pendingIds];
+      const{data:profs}=await supabase.from("profiles").select("*").not("id","in",`(${excluded.join(",")})`).limit(20);
+      if(profs) setSuggestions(profs);
+    } else {
+      const{data:profs}=await supabase.from("profiles").select("*").neq("id",user.id).limit(20);
+      if(profs) setSuggestions(profs);
     }
     const{data:bts}=await supabase.from("battles").select("*").or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`).eq("status","active");
     if(bts) setBattles(bts);
@@ -342,6 +353,7 @@ function FriendsView({theme,user,sessions}){
 
   const sendRequest=async(receiverId)=>{
     await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
+    setSuggestions(p=>p.filter(s=>s.id!==receiverId));
     setSearchEmail(""); setSearchResult(null);
     alert("Pedido enviado! 🍑");
   };
@@ -444,7 +456,24 @@ function FriendsView({theme,user,sessions}){
           </div>
         </Card>
       )}
-      {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>Usuário não encontrado 😕</p>}
+      {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:"16px"}}>Usuário não encontrado 😕</p>}
+      {suggestions.length>0&&!searchResult&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"8px 0",letterSpacing:"1.5px"}}>USUÁRIOS NO PUMPI</p>
+        {suggestions.map(s=>(
+          <Card key={s.id}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                <div style={{width:"32px",height:"32px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>🍑</div>
+                <div>
+                  <p style={{color:T.text,fontWeight:600,fontSize:"13px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{s.username}</p>
+                  <p style={{color:T.textMuted,fontSize:"11px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{s.email}</p>
+                </div>
+              </div>
+              <button onClick={()=>sendRequest(s.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"12px",padding:"7px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Add</button>
+            </div>
+          </Card>
+        ))}
+      </>)}
     </div>)}
 
     {tab==="battles"&&(<div>
@@ -812,7 +841,6 @@ export default function Pumpi(){
 
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
-  // Auto-sync a cada 5 minutos
   useEffect(()=>{
     if(!user) return;
     const id=setInterval(()=>loadData(user.id),5*60*1000);
@@ -987,7 +1015,10 @@ export default function Pumpi(){
 
       <div style={{padding:"20px"}}
         onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
-        onTouchEnd={e=>{const dy=e.changedTouches[0].clientY-touchStartY.current;if(dy>80&&tab!=="session")handleRefresh();}}
+        onTouchEnd={e=>{
+          const dy=e.changedTouches[0].clientY-touchStartY.current;
+          if(dy>80&&tab!=="session"&&!refreshing) handleRefresh();
+        }}
       >
         {tab==="home"&&(data.sessions.length===0?(
           <div style={{textAlign:"center",padding:"70px 20px"}}>
@@ -1036,4 +1067,3 @@ export default function Pumpi(){
     </div>
   );
 }
-
