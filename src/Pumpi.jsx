@@ -626,12 +626,7 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
   };
   const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
   const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
-
-  const handleSaveEdit=()=>{
-    onSave(session);
-    setEditMode(false);
-  };
-
+  const handleSaveEdit=()=>{ onSave(session); setEditMode(false); };
   const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
   const histEx=histModal?[...(session.lower||[]),...(session.upper||[])].find(e=>e.id===histModal):null;
 
@@ -656,8 +651,8 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
             {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
             {session.status==="done"&&session.manual&&(
               editMode
-                ? <button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
-                : <button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
+                ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
+                :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
             )}
             {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
           </div>
@@ -817,6 +812,13 @@ export default function Pumpi(){
 
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
+  // Auto-sync a cada 5 minutos
+  useEffect(()=>{
+    if(!user) return;
+    const id=setInterval(()=>loadData(user.id),5*60*1000);
+    return()=>clearInterval(id);
+  },[user]);
+
   useEffect(()=>{
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('/sw.js').then(reg=>{
@@ -930,7 +932,13 @@ export default function Pumpi(){
     return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
   };
 
-  if(!loaded) return <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:"40px"}}>🍑</span></div>;
+  if(!loaded) return(
+    <div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
+      <span className="pumpi-spin" style={{fontSize:"48px"}}>🍑</span>
+      <p style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"1px"}}>Carregando...</p>
+    </div>
+  );
   if(!user) return <LoginScreen theme={T} onLogin={(u)=>{setUser(u);loadData(u.id);}}/>;
 
   return(
@@ -1003,14 +1011,7 @@ export default function Pumpi(){
         }))}
         {tab==="session"&&currentSession&&(
           <>
-            <SessionView
-              session={currentSession}
-              onUpdate={updateSession}
-              onSave={saveSession}
-              theme={T}
-              onFinish={finishSession}
-              data={data.sessions}
-            />
+            <SessionView session={currentSession} onUpdate={updateSession} onSave={saveSession} theme={T} onFinish={finishSession} data={data.sessions}/>
             <button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button>
           </>
         )}
@@ -1035,3 +1036,4 @@ export default function Pumpi(){
     </div>
   );
 }
+
