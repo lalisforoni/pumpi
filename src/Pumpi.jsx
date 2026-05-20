@@ -205,3 +205,901 @@ function LoginScreen({theme,onLogin}){
     </div>
   );
 }
+function ManualSessionModal({theme,onSave,onClose,allSessions}){
+  const T=theme;
+  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const [durMin,setDurMin]=useState("");
+  const [lower,setLower]=useState([]);
+  const [upper,setUpper]=useState([]);
+  const [addingGroup,setAddingGroup]=useState(null);
+  const [customMachine,setCustomMachine]=useState("");
+
+  const addEx=(group,machine)=>{
+    const allExs=allSessions.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
+    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const last=allHist[0];
+    const ex={id:Date.now(),machine,weight:last?.weight||"",rp:last?.rp||"",reps:last?.reps||"",series:"",weightHistory:[]};
+    if(group==="lower") setLower(p=>[...p,ex]);
+    else setUpper(p=>[...p,ex]);
+    setAddingGroup(null); setCustomMachine("");
+  };
+  const updEx=(group,id,val)=>{
+    if(group==="lower") setLower(p=>p.map(e=>e.id===id?{...e,...val}:e));
+    else setUpper(p=>p.map(e=>e.id===id?{...e,...val}:e));
+  };
+  const delEx=(group,id)=>{
+    if(group==="lower") setLower(p=>p.filter(e=>e.id!==id));
+    else setUpper(p=>p.filter(e=>e.id!==id));
+  };
+
+  const handleSave=()=>{
+    const dateObj=new Date(date+"T12:00:00");
+    const dur=durMin?parseInt(durMin)*60000:0;
+    const addHistory=(exs)=>exs.map(ex=>({
+      ...ex,
+      weightHistory: ex.weight ? [{weight:ex.weight,reps:ex.reps,rp:ex.rp,series:ex.series,date:dateObj.toISOString()}] : [],
+    }));
+    const session={
+      id:Date.now(),
+      date:dateObj.toISOString(),
+      status:"done",
+      startedAt:dateObj.getTime(),
+      finishedAt:dateObj.getTime()+dur,
+      lower:addHistory(lower),
+      upper:addHistory(upper),
+      manual:true,
+    };
+    onSave(session);
+  };
+
+  const inp={background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"};
+  const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",list:lower},{key:"upper",label:"Upper Body",emoji:"💪",list:upper}];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"90vh",overflowY:"auto",position:"relative"}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+        <button onClick={onClose} style={{position:"absolute",top:"20px",right:"20px",background:"none",border:"none",color:T.textMuted,fontSize:"22px",cursor:"pointer",lineHeight:1}}>✕</button>
+        <p style={{color:T.accent,fontSize:"11px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>📅 Lançar Treino Antigo</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}}>
+          <div>
+            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DATA</p>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp,width:"100%"}}/>
+          </div>
+          <div>
+            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DURAÇÃO (min)</p>
+            <input type="number" placeholder="ex: 46" value={durMin} onChange={e=>setDurMin(e.target.value)} style={{...inp,width:"100%"}}/>
+          </div>
+        </div>
+        {groups.map(g=>(
+          <div key={g.key} style={{marginBottom:"20px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <span style={{color:T.textSub,fontSize:"12px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{g.emoji} {g.label} ({g.list.length})</span>
+              <button onClick={()=>setAddingGroup(addingGroup===g.key?null:g.key)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>
+            </div>
+            {addingGroup===g.key&&(
+              <>
+                <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+                  <input placeholder="Nome da máquina..." value={customMachine} onChange={e=>setCustomMachine(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&customMachine.trim()&&addEx(g.key,customMachine.trim())}
+                    style={{...inp,flex:1}}/>
+                  <button onClick={()=>customMachine.trim()&&addEx(g.key,customMachine.trim())} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 14px",cursor:"pointer"}}>+</button>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}}>
+                  {defaultMachines[g.key].map(s=>(
+                    <button key={s} onClick={()=>addEx(g.key,s)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px",color:T.textSub,fontSize:"11px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>
+                  ))}
+                </div>
+              </>
+            )}
+            {g.list.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",padding:"4px 8px",marginBottom:"4px"}}>
+                {["Máquina","Peso","Séries","Reps","RP",""].map((h,i)=>(
+                  <span key={i} style={{color:T.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:i>0?"center":"left",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
+                ))}
+              </div>
+            )}
+            {g.list.map(ex=>(
+              <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
+                <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.machine}</span>
+                <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.accent}}/>
+                <input type="number" placeholder="4" value={ex.series} onChange={e=>updEx(g.key,ex.id,{series:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
+                <select value={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px",color:T.blue}}>
+                  <option value="">rep</option>
+                  {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+                <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
+                <button onClick={()=>delEx(g.key,ex.id)} style={{background:"rgba(255,80,80,0.1)",border:"none",borderRadius:"6px",color:"#ff6b6b",fontSize:"14px",cursor:"pointer",padding:"4px 0",width:"28px"}}>×</button>
+              </div>
+            ))}
+          </div>
+        ))}
+        <button onClick={handleSave} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"15px",padding:"14px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          Salvar Treino 🍑
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FriendsView({theme,user,sessions}){
+  const T=theme;
+  const [friends,setFriends]=useState([]);
+  const [pending,setPending]=useState([]);
+  const [battles,setBattles]=useState([]);
+  const [suggestions,setSuggestions]=useState([]);
+  const [searchEmail,setSearchEmail]=useState("");
+  const [searchResult,setSearchResult]=useState(null);
+  const [searching,setSearching]=useState(false);
+  const [tab,setTab]=useState("friends");
+  const [selectedFriend,setSelectedFriend]=useState(null);
+
+  useEffect(()=>{loadFriends();},[]);
+
+  const loadFriends=async()=>{
+    const{data:reqs}=await supabase.from("friendships").select("*,requester:profiles!friendships_requester_id_fkey(username,email),receiver:profiles!friendships_receiver_id_fkey(username,email)").or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+    if(reqs){
+      const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
+        const isMe=r.requester_id===user.id;
+        return{id:isMe?r.receiver_id:r.requester_id,username:isMe?r.receiver?.username:r.requester?.username,friendshipId:r.id};
+      });
+      const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({...r,requesterUsername:r.requester?.username}));
+      setFriends(accepted); setPending(pend);
+      const friendIds=accepted.map(f=>f.id);
+      const pendingIds=reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id);
+      const excluded=[user.id,...friendIds,...pendingIds];
+      const{data:profs}=await supabase.from("profiles").select("*").not("id","in",`(${excluded.join(",")})`).limit(20);
+      if(profs) setSuggestions(profs);
+    } else {
+      const{data:profs}=await supabase.from("profiles").select("*").neq("id",user.id).limit(20);
+      if(profs) setSuggestions(profs);
+    }
+    const{data:bts}=await supabase.from("battles").select("*").or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`).eq("status","active");
+    if(bts) setBattles(bts);
+  };
+
+  const searchUser=async()=>{
+    setSearching(true); setSearchResult(null);
+    const{data}=await supabase.from("profiles").select("*").eq("email",searchEmail).neq("id",user.id).single();
+    setSearchResult(data||"not_found"); setSearching(false);
+  };
+
+  const sendRequest=async(receiverId)=>{
+    await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
+    setSuggestions(p=>p.filter(s=>s.id!==receiverId));
+    setSearchEmail(""); setSearchResult(null);
+    alert("Pedido enviado! 🍑");
+  };
+
+  const acceptRequest=async(friendshipId)=>{
+    await supabase.from("friendships").update({status:"accepted"}).eq("id",friendshipId);
+    loadFriends();
+  };
+
+  const createBattle=async(opponentId,type)=>{
+    const ends=new Date(); ends.setDate(ends.getDate()+7);
+    await supabase.from("battles").insert({challenger_id:user.id,opponent_id:opponentId,type,status:"active",ends_at:ends.toISOString()});
+    setSelectedFriend(null); loadFriends();
+    alert("Batalha criada! Que vença a melhor 🔥");
+  };
+
+  const myStreak=()=>{
+    const done=sessions.filter(s=>s.status==="done");
+    const days=[...new Set(done.map(s=>s.date.slice(0,10)))].sort();
+    let streak=0;
+    if(days.length){
+      const today=new Date().toISOString().slice(0,10);
+      const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+      if(days[days.length-1]===today||days[days.length-1]===yesterday){
+        streak=1;
+        for(let i=days.length-2;i>=0;i--){
+          const d=(new Date(days[i+1])-new Date(days[i]))/(1000*60*60*24);
+          if(d===1)streak++;else break;
+        }
+      }
+    }
+    return streak;
+  };
+
+  const myLower=sessions.reduce((a,s)=>a+(s.lower?.length||0),0);
+  const battleTypes=[
+    {id:"streak",label:"🔥 Batalha de Streak",desc:"Quem mantém mais dias seguidos em 7 dias"},
+    {id:"lower",label:"🍑 Batalha do Fundão",desc:"Quem faz mais exercícios lower em 7 dias"},
+    {id:"total",label:"💪 Batalha Total",desc:"Quem treina mais vezes em 7 dias"},
+  ];
+  const Card=({children,style={}})=>(<div style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"14px",padding:"14px",marginBottom:"10px",...style}}>{children}</div>);
+
+  return(<div>
+    <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"3px",marginBottom:"16px",border:`1px solid ${T.bgCardBorder}`}}>
+      {["friends","battles","add"].map(t=>(
+        <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",background:tab===t?T.accent:"transparent",border:"none",borderRadius:"8px",color:tab===t?T.accentText:T.textSub,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          {t==="friends"?`Amigos${pending.length>0?` (${pending.length})`:""}`:t==="battles"?"Batalhas":"+ Adicionar"}
+        </button>
+      ))}
+    </div>
+
+    {tab==="friends"&&(<div>
+      {pending.length>0&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS PENDENTES</p>
+        {pending.map(p=>(
+          <Card key={p.id} style={{border:`1px solid ${T.accent}30`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.requesterUsername||"?"}</p>
+              <button onClick={()=>acceptRequest(p.id)} style={{background:T.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Aceitar</button>
+            </div>
+          </Card>
+        ))}
+        <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
+      </>)}
+      {friends.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
+          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
+        </div>
+      ):friends.map(f=>(
+        <Card key={f.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+              <div style={{width:"36px",height:"36px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍑</div>
+              <p style={{color:T.text,fontWeight:700,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{f.username}</p>
+            </div>
+            <button onClick={()=>setSelectedFriend(f)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.accent,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>⚔️ Desafiar</button>
+          </div>
+        </Card>
+      ))}
+    </div>)}
+
+    {tab==="add"&&(<div>
+      <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"8px",letterSpacing:"1.5px"}}>BUSCAR POR EMAIL</p>
+      <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
+        <input placeholder="email@exemplo.com" value={searchEmail} onChange={e=>setSearchEmail(e.target.value)}
+          style={{flex:1,background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"}}/>
+        <button onClick={searchUser} disabled={searching} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
+          {searching?"...":"Buscar"}
+        </button>
+      </div>
+      {searchResult&&searchResult!=="not_found"&&(
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <p style={{color:T.text,fontWeight:600,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{searchResult.username}</p>
+              <p style={{color:T.textMuted,fontSize:"12px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{searchResult.email}</p>
+            </div>
+            <button onClick={()=>sendRequest(searchResult.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Adicionar 🍑</button>
+          </div>
+        </Card>
+      )}
+      {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:"16px"}}>Usuário não encontrado 😕</p>}
+      {suggestions.length>0&&!searchResult&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"8px 0",letterSpacing:"1.5px"}}>USUÁRIOS NO PUMPI</p>
+        {suggestions.map(s=>(
+          <Card key={s.id}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                <div style={{width:"32px",height:"32px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>🍑</div>
+                <div>
+                  <p style={{color:T.text,fontWeight:600,fontSize:"13px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{s.username}</p>
+                  <p style={{color:T.textMuted,fontSize:"11px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{s.email}</p>
+                </div>
+              </div>
+              <button onClick={()=>sendRequest(s.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"12px",padding:"7px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Add</button>
+            </div>
+          </Card>
+        ))}
+      </>)}
+    </div>)}
+
+    {tab==="battles"&&(<div>
+      <Card style={{border:`1px solid ${T.accent}30`,marginBottom:"16px"}}>
+        <p style={{color:T.textMuted,fontSize:"10px",letterSpacing:"1.5px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px"}}>MEU STATUS</p>
+        <div style={{display:"flex",gap:"16px"}}>
+          <div><p style={{color:T.accent,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myStreak()}🔥</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>streak</p></div>
+          <div><p style={{color:"#e879f9",fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myLower}🍑</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>lower total</p></div>
+          <div><p style={{color:T.green,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{sessions.filter(s=>s.status==="done").length}💪</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>treinos</p></div>
+        </div>
+      </Card>
+      {battles.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px"}}>
+          <p style={{fontSize:"40px",marginBottom:"12px"}}>⚔️</p>
+          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Nenhuma batalha ativa.<br/>Desafie uma amiga!</p>
+        </div>
+      ):battles.map(b=>(
+        <Card key={b.id} style={{border:`1px solid ${T.accent}25`}}>
+          <p style={{color:T.accent,fontSize:"12px",fontWeight:700,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif"}}>
+            {b.type==="streak"?"🔥 Batalha de Streak":b.type==="lower"?"🍑 Batalha do Fundão":"💪 Batalha Total"}
+          </p>
+          <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Termina em {new Date(b.ends_at).toLocaleDateString("pt-BR")}</p>
+        </Card>
+      ))}
+    </div>)}
+
+    {selectedFriend&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={()=>setSelectedFriend(null)}>
+        <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px"}} onClick={e=>e.stopPropagation()}>
+          <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+          <p style={{color:T.text,fontSize:"16px",fontWeight:700,fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>⚔️ Desafiar @{selectedFriend.username}</p>
+          {battleTypes.map(bt=>(
+            <button key={bt.id} onClick={()=>createBattle(selectedFriend.id,bt.id)} style={{width:"100%",background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",padding:"14px",marginBottom:"8px",cursor:"pointer",textAlign:"left"}}>
+              <p style={{color:T.text,fontSize:"13px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>{bt.label}</p>
+              <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{bt.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>);
+}
+function HistoryModal({machine,history,theme,onClose}){
+  const sorted=[...history].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const max=history.reduce((m,h)=>Math.max(m,parseFloat(h.weight)||0),0);
+  const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
+  const fmtF=iso=>new Date(iso).toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"});
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div style={{background:theme.modalBg,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"75vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:"36px",height:"4px",background:`${theme.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"20px"}}>
+          <div>
+            <p style={{color:theme.textSub,fontSize:"10px",letterSpacing:"2px",textTransform:"uppercase",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Histórico de carga</p>
+            <h3 style={{color:theme.text,fontSize:"18px",fontWeight:700,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{machine}</h3>
+          </div>
+          {max>0&&<div style={{textAlign:"right"}}><p style={{color:theme.textSub,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>MÁXIMO</p><p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace"}}>{max}kg</p></div>}
+        </div>
+        {history.length>1&&(()=>{
+          const cd=[...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+          const mw=Math.max(...cd.map(h=>parseFloat(h.weight)||0));
+          return(<div style={{marginBottom:"20px",padding:"14px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`}}>
+            <p style={{color:theme.textMuted,fontSize:"10px",letterSpacing:"1.5px",marginBottom:"10px",fontFamily:"'DM Sans',sans-serif"}}>EVOLUÇÃO</p>
+            <div style={{display:"flex",alignItems:"flex-end",gap:"5px",height:"56px"}}>
+              {cd.map((h,i)=>{const pct=mw>0?((parseFloat(h.weight)||0)/mw)*100:0;return(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:"3px"}}><div style={{width:"100%",height:`${Math.max(pct*.56,3)}px`,background:i===cd.length-1?theme.accent:`${theme.accent}40`,borderRadius:"3px 3px 0 0"}}/><span style={{color:theme.textMuted,fontSize:"8px",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{fmt(h.date)}</span></div>);})}
+            </div>
+          </div>);
+        })()}
+        <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+          {sorted.map((h,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",background:theme.bgCard,borderRadius:"10px",border:`1px solid ${theme.bgCardBorder}`}}>
+              <div>
+                <p style={{color:theme.text,fontSize:"16px",fontWeight:600,margin:0,fontFamily:"'DM Mono',monospace"}}>{h.weight}kg</p>
+                <p style={{color:theme.textSub,fontSize:"11px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>
+                  {h.series?`${h.series}x · `:""}
+                  {h.reps?`${h.reps} reps`:""}
+                  {h.rp?` · RP ${h.rp}`:""}
+                </p>
+              </div>
+              <div style={{textAlign:"right"}}><p style={{color:theme.textSub,fontSize:"12px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{fmtF(h.date)}</p>{i===0&&<span style={{background:`${theme.accent}20`,color:theme.accent,fontSize:"10px",padding:"2px 7px",borderRadius:"5px"}}>atual</span>}</div>
+            </div>
+          ))}
+        </div>
+        {history.length===0&&<p style={{color:theme.textMuted,textAlign:"center",fontSize:"13px",padding:"30px 0",fontFamily:"'DM Sans',sans-serif"}}>Sem histórico ainda.</p>}
+      </div>
+    </div>
+  );
+}
+
+function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
+  const [localWeight,setLocalWeight]=useState(exercise.weight||"");
+  const hasH=(exercise.weightHistory||[]).length>0;
+  const last=hasH?exercise.weightHistory[exercise.weightHistory.length-1]:null;
+  const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
+
+  // Sincroniza peso local quando exercício muda externamente
+  useEffect(()=>{ setLocalWeight(exercise.weight||""); },[exercise.id]);
+
+  const handleWeightChange=(val)=>{
+    setLocalWeight(val);
+    onChange({...exercise,weight:val});
+  };
+
+  const handleWeightBlur=(val)=>{
+    if(val&&val!==(exercise.weightHistory?.[exercise.weightHistory.length-1]?.weight||"")){
+      const entry={weight:val,reps:exercise.reps,rp:exercise.rp,series:exercise.series,date:new Date().toISOString()};
+      onChange({...exercise,weight:val,weightHistory:[...(exercise.weightHistory||[]),entry]});
+    }
+  };
+
+  return(
+    <div style={{padding:"10px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`,marginBottom:"8px",opacity:readonly?.72:1}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",alignItems:"center"}}>
+        <div>
+          <span style={{color:theme.text,fontSize:"13px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{exercise.machine}</span>
+          {last&&<p style={{color:theme.textMuted,fontSize:"10px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>atualizado {fmt(last.date)}</p>}
+        </div>
+        <input type="text" placeholder="kg"
+          value={localWeight}
+          disabled={readonly}
+          onChange={e=>!readonly&&handleWeightChange(e.target.value)}
+          onBlur={e=>!readonly&&handleWeightBlur(e.target.value)}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.accent,fontSize:"13px",padding:"6px 5px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        />
+        <input type="number" placeholder="Sér" value={exercise.series||""} disabled={readonly}
+          onChange={e=>!readonly&&onChange({...exercise,series:e.target.value})}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        />
+        <select value={exercise.reps} disabled={readonly}
+          onChange={e=>!readonly&&onChange({...exercise,reps:e.target.value})}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.blue,fontSize:"11px",padding:"6px 2px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        >
+          <option value="">rep</option>
+          {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+        <input type="number" placeholder="RP" value={exercise.rp||""} disabled={readonly}
+          onChange={e=>!readonly&&onChange({...exercise,rp:e.target.value})}
+          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
+        />
+        <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?.4:1}}>×</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"3px 0 0"}}>
+        {["","Peso","Sér","Reps","RP",""].map((h,i)=>(
+          <span key={i} style={{color:theme.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
+        ))}
+      </div>
+      <button onClick={onShowHistory} style={{marginTop:"8px",width:"100%",background:hasH?`${theme.accent}10`:"transparent",border:hasH?`1px solid ${theme.accent}25`:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",padding:"6px",color:hasH?theme.accent:theme.textMuted,fontSize:"11px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"5px"}}>
+        <span>📈</span>{hasH?`Ver evolução · ${(exercise.weightHistory||[]).length} registros`:"Sem histórico ainda"}
+      </button>
+    </div>
+  );
+}
+
+function AddMachineModal({group,onAdd,onClose,existingMachines,theme}){
+  const [custom,setCustom]=useState("");
+  const suggestions=defaultMachines[group].filter(m=>!existingMachines.includes(m));
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div style={{background:theme.modalBg,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:"480px",maxHeight:"70vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:"36px",height:"4px",background:`${theme.accent}50`,borderRadius:"2px",margin:"0 auto 20px"}}/>
+        <p style={{color:theme.textSub,fontSize:"11px",textTransform:"uppercase",letterSpacing:"2px",marginBottom:"14px",fontFamily:"'DM Sans',sans-serif"}}>Adicionar · {group==="lower"?"Lower Body":"Upper Body"}</p>
+        <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
+          <input placeholder="Nome personalizado..." value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&custom.trim()&&onAdd(custom.trim())}
+            style={{flex:1,background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"10px",color:theme.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"}}
+          />
+          <button onClick={()=>custom.trim()&&onAdd(custom.trim())} style={{background:theme.accent,border:"none",borderRadius:"10px",color:theme.accentText,fontWeight:700,fontSize:"14px",padding:"10px 16px",cursor:"pointer"}}>+</button>
+        </div>
+        {suggestions.length>0&&(<><p style={{color:theme.textMuted,fontSize:"11px",marginBottom:"10px",fontFamily:"'DM Sans',sans-serif"}}>SUGESTÕES</p><div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>{suggestions.map(s=><button key={s} onClick={()=>onAdd(s)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px",color:theme.textSub,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>)}</div></>)}
+      </div>
+    </div>
+  );
+}
+
+function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
+  const [modal,setModal]=useState(null);
+  const [histModal,setHistModal]=useState(null);
+  const [editMode,setEditMode]=useState(false);
+  const readonly=session.status==="done"&&!editMode;
+  const isActive=session.status==="active";
+  const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null;
+  const timer=useTimer(session.startedAt,isActive&&!isManualReopened);
+  const dur=calcDuration(session.startedAt,session.finishedAt);
+
+  const addEx=(group,machine)=>{
+    const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
+    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const lastEntry=allHist[0];
+    onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",series:lastEntry?.series||"",weightHistory:[]}]});
+    setModal(null);
+  };
+  const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
+  const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
+  const handleSaveEdit=()=>{ onSave(session); setEditMode(false); };
+  const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
+  const histEx=histModal?[...(session.lower||[]),...(session.upper||[])].find(e=>e.id===histModal):null;
+
+  return(
+    <div>
+      <div style={{borderRadius:"16px",marginBottom:"20px",border:session.status==="done"?`1px solid ${theme.green}40`:session.status==="active"?`1px solid ${theme.accent}35`:`1px solid ${theme.bgCardBorder}`,background:session.status==="done"?`${theme.green}10`:session.status==="active"?`${theme.accent}08`:theme.bgCard}}>
+        <div style={{padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+            <span style={{fontSize:"22px"}}>{session.status==="done"?"✅":session.status==="active"?"🔥":"⏸️"}</span>
+            <div>
+              <p style={{color:session.status==="done"?theme.green:session.status==="active"?theme.accent:theme.textSub,fontSize:"11px",fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"1.5px"}}>
+                {session.status==="done"?(editMode?"Modo Edição ✏️":"Treino Finalizado"):session.status==="active"?"Em Andamento":"Não Iniciado"}
+              </p>
+              {isActive&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
+              {isActive&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
+              {session.status==="done"&&dur&&!editMode&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
+              {session.status==="pending"&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Toque em Iniciar quando estiver pronto</p>}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:"6px"}}>
+            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
+            {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
+            {session.status==="done"&&session.manual&&(
+              editMode
+                ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
+                :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
+            )}
+            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
+          </div>
+        </div>
+      </div>
+      {groups.map(g=>(
+        <div key={g.key} style={{marginBottom:"24px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+              <span style={{fontSize:"15px"}}>{g.emoji}</span>
+              <span style={{color:g.color,fontSize:"12px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif"}}>{g.label}</span>
+              <span style={{color:theme.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>({session[g.key]?.length||0})</span>
+            </div>
+            {!readonly&&<button onClick={()=>setModal(g.key)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",color:theme.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>}
+          </div>
+          {(session[g.key]||[]).length===0?(
+            <div style={{textAlign:"center",padding:"18px",color:theme.textMuted,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",border:`1px dashed ${theme.bgCardBorder}`,borderRadius:"10px"}}>
+              {readonly?"Nenhum exercício registrado":"Adicione uma máquina"}
+            </div>
+          ):(session[g.key]||[]).map(ex=>(
+            <ExerciseRow key={ex.id} exercise={ex} theme={theme} readonly={readonly}
+              onChange={d=>updEx(g.key,ex.id,d)}
+              onDelete={()=>delEx(g.key,ex.id)}
+              onShowHistory={()=>setHistModal(ex.id)}
+            />
+          ))}
+        </div>
+      ))}
+      {modal&&<AddMachineModal group={modal} theme={theme} onAdd={m=>addEx(modal,m)} onClose={()=>setModal(null)} existingMachines={(session[modal]||[]).map(e=>e.machine)}/>}
+      {histEx&&<HistoryModal machine={histEx.machine} history={histEx.weightHistory||[]} theme={theme} onClose={()=>setHistModal(null)}/>}
+    </div>
+  );
+}
+function MetricsView({sessions,theme}){
+  const T=theme;
+  const doneSessions=sessions.filter(s=>s.status==="done");
+  const allExercises=sessions.flatMap(s=>[...(s.lower||[]).map(e=>({...e,group:"lower",date:s.date})),...(s.upper||[]).map(e=>({...e,group:"upper",date:s.date}))]);
+  const totalLower=sessions.reduce((a,s)=>a+(s.lower?.length||0),0);
+  const totalUpper=sessions.reduce((a,s)=>a+(s.upper?.length||0),0);
+  const totalSessions=sessions.length;
+  const totalDone=doneSessions.length;
+  const totalKgLifted=allExercises.reduce((acc,ex)=>acc+(ex.weightHistory||[]).reduce((a,h)=>a+(parseFloat(h.weight)||0),0),0);
+  const sessionDays=[...new Set(doneSessions.map(s=>s.date.slice(0,10)))].sort();
+  let bestStreak=0,cur=0;
+  for(let i=0;i<sessionDays.length;i++){cur=i===0?1:(()=>{const d=(new Date(sessionDays[i])-new Date(sessionDays[i-1]))/(1000*60*60*24);return d===1?cur+1:1;})();if(cur>bestStreak)bestStreak=cur;}
+  let streak=0;
+  if(sessionDays.length){const today=new Date().toISOString().slice(0,10);const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);const last=sessionDays[sessionDays.length-1];if(last===today||last===yesterday){streak=1;for(let i=sessionDays.length-2;i>=0;i--){const d=(new Date(sessionDays[i+1])-new Date(sessionDays[i]))/(1000*60*60*24);if(d===1)streak++;else break;}}}
+  const durations=doneSessions.filter(s=>s.startedAt&&s.finishedAt).map(s=>Math.floor((s.finishedAt-s.startedAt)/60000));
+  const avgDur=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):0;
+  const lowerPct=(totalLower+totalUpper)>0?Math.round(totalLower/(totalLower+totalUpper)*100):50;
+  const upperPct=100-lowerPct;
+  const machineCount={};
+  allExercises.forEach(e=>{machineCount[e.machine]=(machineCount[e.machine]||0)+1;});
+  const topMachines=Object.entries(machineCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const machinePRs={};
+  allExercises.forEach(ex=>{const best=Math.max(...(ex.weightHistory||[]).map(h=>parseFloat(h.weight)||0),0);if(best>0)machinePRs[ex.machine]=Math.max(machinePRs[ex.machine]||0,best);});
+  const coiceCount=allExercises.filter(e=>e.machine.toLowerCase().includes("abdutora")).length;
+  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪️"},{min:30,label:"Égua Lendária 👑"}];
+  const coiceLevel=[...coiceLevels].reverse().find(l=>coiceCount>=l.min)||coiceLevels[0];
+  const abCount=allExercises.filter(e=>e.machine.toLowerCase().includes("adutora")).length;
+  const abLevels=[{min:0,label:"Fechadinha 🌸"},{min:5,label:"Abrindo o Jogo 🦋"},{min:15,label:"Borboleta Livre 🌺"},{min:30,label:"Rainha do Abre & Fecha 👸"}];
+  const abLevel=[...abLevels].reverse().find(l=>abCount>=l.min)||abLevels[0];
+  const bundaCount=totalLower;
+  const bundaLevels=[{min:0,label:"Bunda Newbie 🌱"},{min:10,label:"Bunda Promissora 🌿"},{min:25,label:"Bunda em Construção 🧱"},{min:45,label:"Bunda Notável 🔥"},{min:70,label:"Bunda Respeitável 👏"},{min:100,label:"Bunda Lendária 👑"},{min:150,label:"BUNDA NA NUCA 🚀"}];
+  const bundaLevel=[...bundaLevels].reverse().find(l=>bundaCount>=l.min)||bundaLevels[0];
+  const nextBunda=bundaLevels.find(l=>bundaCount<l.min)||bundaLevels[bundaLevels.length-1];
+  const bundaPct=Math.min(100,Math.round((bundaCount/(nextBunda.min||1))*100));
+  const kgLevels=[{min:0,label:"Levantou um Chihuahua 🐕"},{min:500,label:"Levantou um Panda 🐼"},{min:2000,label:"Levantou uma Vaca 🐄"},{min:5000,label:"Levantou um Elefante Baby 🐘"},{min:15000,label:"Levantou um Carro 🚗"},{min:50000,label:"Levantou um Caminhão 🚛"}];
+  const kgLevel=[...kgLevels].reverse().find(l=>totalKgLifted>=l.min)||kgLevels[0];
+  const ratLevels=[{min:0,label:"Visitante Ocasional 🚶"},{min:3,label:"Frequentadora 🏃"},{min:7,label:"Academia Rat 🐀"},{min:14,label:"Viciada no Ferro 💊"},{min:21,label:"A Gym É Minha Casa 🏠"}];
+  const ratLevel=[...ratLevels].reverse().find(l=>streak>=l.min)||ratLevels[0];
+  const Bar=({pct,color,h=8})=>(<div style={{background:T.bgCard,borderRadius:"99px",height:`${h}px`,overflow:"hidden",border:`1px solid ${T.bgCardBorder}`}}><div style={{height:"100%",width:`${Math.min(100,pct)}%`,background:color,borderRadius:"99px",transition:"width .6s ease"}}/></div>);
+  const Card=({children,style={}})=>(<div style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"12px",...style}}>{children}</div>);
+  const Label=({children,color})=>(<span style={{background:`${color||T.accent}20`,color:color||T.accent,fontSize:"11px",fontWeight:700,padding:"3px 10px",borderRadius:"20px",fontFamily:"'DM Sans',sans-serif"}}>{children}</span>);
+  if(sessions.length===0) return(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{fontSize:"48px",marginBottom:"16px"}}>📊</div><p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Faça pelo menos um treino<br/>para ver suas métricas!</p></div>);
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"12px"}}>
+      {[{label:"Treinos",value:totalSessions,sub:`${totalDone} finalizados`},{label:"Exercícios",value:totalLower+totalUpper,sub:`${totalLower}L · ${totalUpper}U`},{label:"Streak",value:`${streak}🔥`,sub:`melhor: ${bestStreak} dias`}].map((s,i)=>(
+        <div key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"14px",padding:"14px 10px",textAlign:"center"}}>
+          <p style={{color:T.accent,fontSize:"22px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{s.value}</p>
+          <p style={{color:T.text,fontSize:"11px",fontWeight:600,margin:"4px 0 2px",fontFamily:"'DM Sans',sans-serif"}}>{s.label}</p>
+          <p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{s.sub}</p>
+        </div>
+      ))}
+    </div>
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>Upper vs Lower</p>
+        <div style={{display:"flex",gap:"8px"}}><Label color={T.green}>🦵 {lowerPct}%</Label><Label color={T.blue}>💪 {upperPct}%</Label></div>
+      </div>
+      <div style={{display:"flex",gap:"4px",height:"28px",borderRadius:"10px",overflow:"hidden"}}>
+        <div style={{flex:lowerPct,background:T.green,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:"11px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{lowerPct>10?"Lower":""}</span></div>
+        <div style={{flex:upperPct,background:T.blue,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:"11px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{upperPct>10?"Upper":""}</span></div>
+      </div>
+      <p style={{color:T.textMuted,fontSize:"11px",margin:"10px 0 0",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>{lowerPct>upperPct?"Foco total no fundão 🍑":"Parte de cima tá dominando 💪"}</p>
+    </Card>
+    <Card style={{border:`1px solid #e879f930`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"12px"}}>
+        <div><p style={{color:"#e879f9",fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>🍑 Meta Bumbum na Nuca</p><p style={{color:T.text,fontSize:"18px",fontWeight:800,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{bundaLevel.label}</p></div>
+        <div style={{textAlign:"right"}}><p style={{color:"#e879f9",fontSize:"24px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{bundaCount}</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>exercícios lower</p></div>
+      </div>
+      <Bar pct={bundaPct} color="#e879f9" h={10}/>
+      <p style={{color:T.textMuted,fontSize:"11px",margin:"8px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{bundaCount<nextBunda.min?`Faltam ${nextBunda.min-bundaCount} para: ${nextBunda.label}`:"🎉 Nível máximo!"}</p>
+    </Card>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
+      <div style={{background:T.bgCard,border:`1px solid #ff7eb330`,borderRadius:"14px",padding:"14px"}}>
+        <p style={{color:"#ff7eb3",fontSize:"20px",margin:"0 0 4px"}}>🐴</p>
+        <p style={{color:T.text,fontSize:"12px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>Coice da Égua</p>
+        <p style={{color:"#ff7eb3",fontSize:"11px",fontWeight:600,margin:"0 0 6px",fontFamily:"'DM Sans',sans-serif"}}>{coiceLevel.label}</p>
+        <p style={{color:T.textMuted,fontSize:"11px",margin:"0 0 8px",fontFamily:"'DM Sans',sans-serif"}}>{coiceCount} abdutoras</p>
+        <Bar pct={Math.min(100,(coiceCount/30)*100)} color="#ff7eb3" h={6}/>
+      </div>
+      <div style={{background:T.bgCard,border:`1px solid #a78bfa30`,borderRadius:"14px",padding:"14px"}}>
+        <p style={{color:"#a78bfa",fontSize:"20px",margin:"0 0 4px"}}>🦋</p>
+        <p style={{color:T.text,fontSize:"12px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>Abre & Fecha</p>
+        <p style={{color:"#a78bfa",fontSize:"11px",fontWeight:600,margin:"0 0 6px",fontFamily:"'DM Sans',sans-serif"}}>{abLevel.label}</p>
+        <p style={{color:T.textMuted,fontSize:"11px",margin:"0 0 8px",fontFamily:"'DM Sans',sans-serif"}}>{abCount} adutoras</p>
+        <Bar pct={Math.min(100,(abCount/30)*100)} color="#a78bfa" h={6}/>
+      </div>
+    </div>
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>⚡ Força Total</p>
+        <p style={{color:T.accent,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{totalKgLifted.toLocaleString("pt-BR")} kg</p>
+      </div>
+      <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif"}}>{kgLevel.label}</p>
+      <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Total acumulado de kg levantados</p>
+    </Card>
+    <Card>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>📅 Constância</p>
+        <Label>{ratLevel.label}</Label>
+      </div>
+      <p style={{color:T.textMuted,fontSize:"11px",margin:"4px 0 10px",fontFamily:"'DM Sans',sans-serif"}}>{streak} dias seguidos · melhor: {bestStreak} dias</p>
+      <Bar pct={Math.min(100,(streak/21)*100)} color={T.accent} h={8}/>
+    </Card>
+    {avgDur>0&&(<Card><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>⏱ Tempo Médio</p><p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{avgDur>=60?`${Math.floor(avgDur/60)}h ${avgDur%60}min`:`${avgDur} min`} por treino</p></div><p style={{color:T.accent,fontSize:"32px",margin:0}}>{avgDur<30?"⚡":avgDur<60?"🔥":"🦾"}</p></div></Card>)}
+    {topMachines.length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🏆 Suas Favoritas</p>{topMachines.map(([name,count],i)=>{const p=getPersona(name);const pct=Math.round((count/topMachines[0][1])*100);return(<div key={name} style={{marginBottom:"10px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span>{i===0&&<span style={{background:`${T.accent}20`,color:T.accent,fontSize:"9px",padding:"1px 6px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>favorita</span>}</div><span style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>{count}x</span></div><Bar pct={pct} color={p.color} h={6}/></div>);})}</Card>)}
+    {Object.keys(machinePRs).length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🥇 Meus PRs</p><div style={{display:"flex",flexDirection:"column",gap:"6px"}}>{Object.entries(machinePRs).sort((a,b)=>b[1]-a[1]).map(([name,kg])=>{const p=getPersona(name);return(<div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:`${p.color}10`,border:`1px solid ${p.color}25`,borderRadius:"10px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span></div><span style={{color:p.color,fontSize:"14px",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{kg}kg</span></div>);})}</div></Card>)}
+  </div>);
+}
+
+export default function Pumpi(){
+  const [data,setData]=useState({sessions:[]});
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [activeSession,setActiveSession]=useState(null);
+  const [tab,setTab]=useState("home");
+  const [loaded,setLoaded]=useState(false);
+  const [theme,setTheme]=useState(getTimeTheme());
+  const [celebration,setCelebration]=useState(false);
+  const [showManual,setShowManual]=useState(false);
+  const [pendingCount,setPendingCount]=useState(0);
+  const [refreshing,setRefreshing]=useState(false);
+  const touchStartY=useRef(0);
+  const T=theme;
+
+  useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
+
+  // Auto-sync a cada 5 minutos — só roda se não estiver em sessão ativa
+  useEffect(()=>{
+    if(!user) return;
+    const id=setInterval(()=>{
+      if(tab!=="session") loadData(user.id);
+    },5*60*1000);
+    return()=>clearInterval(id);
+  },[user,tab]);
+
+  useEffect(()=>{
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js').then(reg=>{
+        reg.addEventListener('updatefound',()=>{
+          const nw=reg.installing;
+          nw.addEventListener('statechange',()=>{
+            if(nw.state==='installed'&&navigator.serviceWorker.controller) window.location.reload();
+          });
+        });
+      }).catch(()=>{});
+    }
+    (async()=>{
+      const{data:{session}}=await supabase.auth.getSession();
+      if(session?.user){setUser(session.user);await loadData(session.user.id);}
+      else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
+      setLoaded(true);
+    })();
+    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
+      if(event==="SIGNED_IN"&&session?.user){setUser(session.user);await loadData(session.user.id);}
+      else if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setData({sessions:[]});setPendingCount(0);}
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  const loadData=async(uid)=>{
+    const{data:prof}=await supabase.from("profiles").select("*").eq("id",uid).single();
+    if(prof) setProfile(prof);
+    const{data:rows}=await supabase.from("sessions").select("*").eq("user_id",uid).order("id",{ascending:false});
+    if(rows&&rows.length>0){
+      const remoteSessions=rows.map(r=>({...r.data,id:r.id}));
+      try{
+        const local=localStorage.getItem(STORAGE_KEY);
+        const localSessions=local?JSON.parse(local).sessions||[]:[];
+        const merged=mergeSessions(remoteSessions,localSessions);
+        setData({sessions:merged});
+        localStorage.setItem(STORAGE_KEY,JSON.stringify({sessions:merged}));
+      }catch{
+        setData({sessions:remoteSessions});
+      }
+    } else {
+      try{
+        const local=localStorage.getItem(STORAGE_KEY);
+        if(local){
+          const parsed=JSON.parse(local);
+          if(parsed.sessions?.length>0){
+            setData(parsed);
+            for(const s of parsed.sessions){
+              await supabase.from("sessions").upsert({id:s.id,user_id:uid,data:s},{onConflict:"id"});
+            }
+          }
+        }
+      }catch{}
+    }
+    const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
+    if(pending) setPendingCount(pending.length);
+  };
+
+  const saveSession=async(session,uid=user?.id)=>{
+    if(uid) await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+  };
+
+  const save=async(nd)=>{
+    setData(nd);
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(nd));}catch{}
+  };
+
+  const newSession=async()=>{
+    const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
+    const nd={...data,sessions:[s,...data.sessions]};
+    await save(nd); await saveSession(s);
+    setActiveSession(s.id); setTab("session");
+  };
+
+  const updateSession=async(updated)=>{
+    const nd={...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)};
+    await save(nd); await saveSession(updated);
+    setActiveSession(updated.id);
+  };
+
+  const finishSession=async()=>{
+    const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
+    const updated={...s,status:"done",finishedAt:Date.now()};
+    const nd={...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)};
+    await save(nd); await saveSession(updated);
+    setCelebration(true);
+  };
+
+  const deleteSession=async(id)=>{
+    const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
+    await save(nd);
+    if(user) await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
+    setTab("home");
+  };
+
+  const saveManualSession=async(session)=>{
+    const nd={...data,sessions:[session,...data.sessions]};
+    await save(nd); await saveSession(session);
+    setShowManual(false);
+  };
+
+  const logout=async()=>{
+    await supabase.auth.signOut();
+    setUser(null); setProfile(null); setData({sessions:[]}); setPendingCount(0);
+    try{localStorage.removeItem(STORAGE_KEY);}catch{}
+  };
+
+  const handleRefresh=async()=>{
+    if(refreshing) return;
+    setRefreshing(true);
+    if(user) await loadData(user.id);
+    else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
+    setRefreshing(false);
+  };
+
+  const currentSession=data.sessions.find(s=>s.id===activeSession);
+  const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
+  const statusBadge=s=>{
+    if(s.status==="done")   return{label:"✅ Finalizado",  color:T.green,bg:`${T.green}18`};
+    if(s.status==="active") return{label:"🔥 Em andamento",color:T.accent,bg:`${T.accent}18`};
+    return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
+  };
+
+  if(!loaded) return(
+    <div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
+      <span className="pumpi-spin" style={{fontSize:"48px"}}>🍑</span>
+      <p style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"1px"}}>Carregando...</p>
+    </div>
+  );
+  if(!user) return <LoginScreen theme={T} onLogin={(u)=>{setUser(u);loadData(u.id);}}/>;
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{width:100%;height:100%;overflow-x:hidden;}
+        input::placeholder{color:${T.textMuted}!important;}
+        input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+        input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
+        select option{background:${T.modalBg};color:${T.text};}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
+      `}</style>
+
+      {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
+      {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
+
+      <div style={{padding:"calc(env(safe-area-inset-top) + 16px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          {tab==="session"?(
+            <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
+          ):(
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
+                <span style={{fontSize:"16px"}}>🍑</span>
+                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
+                <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+              </div>
+              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
+            </div>
+          )}
+          {tab==="home"&&(
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setShowManual(true)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",color:T.textSub,fontWeight:600,fontSize:"12px",padding:"10px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>📅 Manual</button>
+              <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
+            </div>
+          )}
+          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
+          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
+        </div>
+      </div>
+
+      {refreshing&&<div style={{textAlign:"center",padding:"12px",color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif"}}>🔄 Atualizando...</div>}
+
+      <div style={{padding:"20px"}}
+        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
+        onTouchEnd={e=>{
+          const dy=e.changedTouches[0].clientY-touchStartY.current;
+          if(dy>80&&tab!=="session"&&!refreshing) handleRefresh();
+        }}
+      >
+        {tab==="home"&&(data.sessions.length===0?(
+          <div style={{textAlign:"center",padding:"70px 20px"}}>
+            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
+            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
+          </div>
+        ):data.sessions.map(s=>{
+          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
+          return(
+            <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
+                <div>
+                  <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
+                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
+                </div>
+                <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
+              </div>
+              {total>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[...(s.lower||[]),...(s.upper||[])].slice(0,4).map((ex,i)=><span key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"6px",padding:"3px 8px",color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` · ${ex.weight}kg`:""}</span>)}{total>4&&<span style={{color:T.textMuted,fontSize:"11px",padding:"3px 0",fontFamily:"'DM Sans',sans-serif"}}>+{total-4} mais</span>}</div>}
+            </div>
+          );
+        }))}
+        {tab==="session"&&currentSession&&(
+          <>
+            <SessionView session={currentSession} onUpdate={updateSession} onSave={saveSession} theme={T} onFinish={finishSession} data={data.sessions}/>
+            <button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button>
+          </>
+        )}
+        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
+        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
+      </div>
+
+      {tab!=="session"&&(
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
+          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+              <div style={{position:"relative",display:"inline-block"}}>
+                <span style={{fontSize:"20px"}}>{n.icon}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:"-4px",right:"-8px",background:"#ff6b6b",color:"#fff",fontSize:"9px",fontWeight:800,padding:"1px 5px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>{n.badge}</span>}
+              </div>
+              <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
+              {tab===n.id&&<div style={{width:"20px",height:"2px",background:T.accent,borderRadius:"1px"}}/>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
