@@ -4,15 +4,33 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYmR2cHBhdGFzdWN5YnpmemV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDI1NTUsImV4cCI6MjA5NDUxODU1NX0.H4lPCHC-bdlrf1JEXzWd1x-kzHeSdpFq6UFIepjhGUk";
 
+const pumpiStorage = {
+  getItem: (key) => {
+    try {
+      return localStorage.getItem(key) || sessionStorage.getItem(key);
+    } catch { return null; }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
+    } catch {}
+  },
+  removeItem: (key) => {
+    try {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    } catch {}
+  },
+};
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     persistSession: true,
     storageKey: "pumpi_auth",
-    storage: {
-      getItem: (key) => { try { return localStorage.getItem(key); } catch { return null; } },
-      setItem: (key, value) => { try { localStorage.setItem(key, value); } catch {} },
-      removeItem: (key) => { try { localStorage.removeItem(key); } catch {} },
-    },
+    storage: pumpiStorage,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
   },
 });
 
