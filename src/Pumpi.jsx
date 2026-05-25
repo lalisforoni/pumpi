@@ -17,6 +17,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 const STORAGE_KEY = "pumpi_v1";
+const PENDING_KEY = "pumpi_pending_sync";
+
 const defaultMachines = {
   lower: ["Mesa Flexora","Adutora","Abdutora","Cadeira Flexora","Cadeira Extensora","Leg Press","Panturrilha","Agachamento"],
   upper: ["Supino","Puxada Frontal","Remada","Desenvolvimento","Crucifixo","Bíceps","Tríceps","Ombro","Rosca Direta","Voador"],
@@ -74,7 +76,6 @@ function calcDuration(a,b){
   return hh>0?`${hh}h ${m%60}min`:`${m}min`;
 }
 
-// Mescla sessões do Supabase com localStorage preservando weightHistory
 function mergeSessions(remote,local){
   return remote.map(r=>{
     const l=local.find(s=>s.id===r.id);
@@ -326,6 +327,7 @@ function FriendsView({theme,user,sessions}){
   const T=theme;
   const [friends,setFriends]=useState([]);
   const [pending,setPending]=useState([]);
+  const [sent,setSent]=useState([]);
   const [battles,setBattles]=useState([]);
   const [suggestions,setSuggestions]=useState([]);
   const [searchEmail,setSearchEmail]=useState("");
@@ -344,7 +346,8 @@ function FriendsView({theme,user,sessions}){
         return{id:isMe?r.receiver_id:r.requester_id,username:isMe?r.receiver?.username:r.requester?.username,friendshipId:r.id};
       });
       const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({...r,requesterUsername:r.requester?.username}));
-      setFriends(accepted); setPending(pend);
+      const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({...r,receiverUsername:r.receiver?.username}));
+      setFriends(accepted); setPending(pend); setSent(sentReqs);
       const friendIds=accepted.map(f=>f.id);
       const pendingIds=reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id);
       const excluded=[user.id,...friendIds,...pendingIds];
@@ -368,7 +371,7 @@ function FriendsView({theme,user,sessions}){
     await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
     setSuggestions(p=>p.filter(s=>s.id!==receiverId));
     setSearchEmail(""); setSearchResult(null);
-    alert("Pedido enviado! 🍑");
+    loadFriends();
   };
 
   const acceptRequest=async(friendshipId)=>{
@@ -431,7 +434,22 @@ function FriendsView({theme,user,sessions}){
         ))}
         <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
       </>)}
-      {friends.length===0?(
+      {sent.length>0&&(<>
+        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS ENVIADOS</p>
+        {sent.map(p=>(
+          <Card key={p.id} style={{border:`1px solid ${T.textMuted}20`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                <div style={{width:"32px",height:"32px",background:`${T.accent}15`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>🍑</div>
+                <p style={{color:T.text,fontSize:"13px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.receiverUsername||"?"}</p>
+              </div>
+              <span style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>Aguardando...</span>
+            </div>
+          </Card>
+        ))}
+        <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
+      </>)}
+      {friends.length===0&&sent.length===0&&pending.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}>
           <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
           <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
@@ -582,8 +600,7 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
   const last=hasH?exercise.weightHistory[exercise.weightHistory.length-1]:null;
   const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
 
-  // Sincroniza peso local quando exercício muda externamente
-  useEffect(()=>{ setLocalWeight(exercise.weight||""); },[exercise.id]);
+  useEffect(()=>{setLocalWeight(exercise.weight||"");},[exercise.id]);
 
   const handleWeightChange=(val)=>{
     setLocalWeight(val);
@@ -615,7 +632,7 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
           onChange={e=>!readonly&&onChange({...exercise,series:e.target.value})}
           style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         />
-        <select value={exercise.reps} disabled={readonly}
+        <select value={exercise.reps||""} disabled={readonly}
           onChange={e=>!readonly&&onChange({...exercise,reps:e.target.value})}
           style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.blue,fontSize:"11px",padding:"6px 2px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         >
@@ -865,7 +882,6 @@ export default function Pumpi(){
 
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
-  // Auto-sync a cada 5 minutos — só roda se não estiver em sessão ativa
   useEffect(()=>{
     if(!user) return;
     const id=setInterval(()=>{
@@ -929,10 +945,33 @@ export default function Pumpi(){
     }
     const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
     if(pending) setPendingCount(pending.length);
+    // Sincroniza pendentes offline
+    try{
+      const pendingSync=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+      if(pendingSync.length>0){
+        const local=localStorage.getItem(STORAGE_KEY);
+        const localSessions=local?JSON.parse(local).sessions||[]:[];
+        for(const id of pendingSync){
+          const s=localSessions.find(s=>s.id===id);
+          if(s) await supabase.from("sessions").upsert({id:s.id,user_id:uid,data:s},{onConflict:"id"});
+        }
+        localStorage.removeItem(PENDING_KEY);
+      }
+    }catch{}
   };
 
   const saveSession=async(session,uid=user?.id)=>{
-    if(uid) await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+    if(uid){
+      const{error}=await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+      if(error){
+        try{
+          const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+          if(!pending.includes(session.id)){
+            localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
+          }
+        }catch{}
+      }
+    }
   };
 
   const save=async(nd)=>{
