@@ -357,13 +357,20 @@ function FriendsView({theme,user,sessions}){
     try{
       const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
       const fetchPromise=async()=>{
-        // Query simples sem JOIN
-        const{data:reqs}=await supabase.from("friendships").select("*").or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+        // Query simples sem JOIN para evitar falhas no PWA
+        const{data:reqs,error:reqsError}=await supabase
+          .from("friendships")
+          .select("*")
+          .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+        if(reqsError) throw reqsError;
+
         if(reqs&&reqs.length>0){
           // Busca profiles separadamente
           const allIds=[...new Set(reqs.flatMap(r=>[r.requester_id,r.receiver_id]).filter(id=>id!==user.id))];
           const{data:profiles}=await supabase.from("profiles").select("*").in("id",allIds);
           const getProfile=id=>profiles?.find(p=>p.id===id);
+
           const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
             const isMe=r.requester_id===user.id;
             const otherId=isMe?r.receiver_id:r.requester_id;
@@ -376,12 +383,14 @@ function FriendsView({theme,user,sessions}){
             ...r,receiverUsername:getProfile(r.receiver_id)?.username
           }));
           setFriends(accepted); setPending(pend); setSent(sentReqs);
+
           const friendIds=accepted.map(f=>f.id);
           const pendingIds=reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id);
           const excluded=[user.id,...friendIds,...pendingIds];
           const{data:profs}=await supabase.from("profiles").select("*").not("id","in",`(${excluded.join(",")})`).limit(20);
           if(profs) setSuggestions(profs);
         } else {
+          // Sem friendships — mostra todos os outros usuários como sugestão
           const{data:profs}=await supabase.from("profiles").select("*").neq("id",user.id).limit(20);
           if(profs) setSuggestions(profs);
         }
@@ -410,14 +419,14 @@ function FriendsView({theme,user,sessions}){
       await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
       setSuggestions(p=>p.filter(s=>s.id!==receiverId));
       setSearchEmail(""); setSearchResult(null);
-      loadFriends();
+      await loadFriends();
     }catch(e){ alert("Erro ao enviar pedido: "+e.message); }
   };
 
   const acceptRequest=async(friendshipId)=>{
     try{
       await supabase.from("friendships").update({status:"accepted"}).eq("id",friendshipId);
-      loadFriends();
+      await loadFriends();
     }catch(e){ alert("Erro ao aceitar: "+e.message); }
   };
 
@@ -1076,4 +1085,152 @@ export default function Pumpi(){
   };
 
   const saveManualSession=async(session)=>{
-    const
+    const nd={...data,sessions:[session,...data.sessions]};
+    await save(nd); await saveSession(session);
+    setShowManual(false);
+  };
+
+  const logout=async()=>{
+    await supabase.auth.signOut();
+    setUser(null); setProfile(null); setData({sessions:[]}); setPendingCount(0);
+    try{localStorage.removeItem(STORAGE_KEY);}catch{}
+  };
+
+  const handleRefresh=async()=>{
+    if(refreshing) return;
+    setRefreshing(true);
+    try{
+      const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
+      if(user) await Promise.race([loadData(user.id),timeout]);
+      else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
+    }catch(e){
+      console.error("Refresh falhou:",e.message);
+    }finally{
+      setRefreshing(false);
+    }
+  };
+
+  const currentSession=data.sessions.find(s=>s.id===activeSession);
+  const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
+  const statusBadge=s=>{
+    if(s.status==="done")   return{label:"✅ Finalizado",  color:T.green,bg:`${T.green}18`};
+    if(s.status==="active") return{label:"🔥 Em andamento",color:T.accent,bg:`${T.accent}18`};
+    return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
+  };
+
+  if(!loaded) return(
+    <div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
+      <span className="pumpi-spin" style={{fontSize:"48px"}}>🍑</span>
+      <p style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"1px"}}>Carregando...</p>
+    </div>
+  );
+  if(!user) return <LoginScreen theme={T} onLogin={(u)=>{setUser(u);loadData(u.id);}}/>;
+
+  return(
+    <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{width:100%;height:100%;overflow-x:hidden;}
+        input::placeholder{color:${T.textMuted}!important;}
+        input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+        input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
+        select option{background:${T.modalBg};color:${T.text};}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
+      `}</style>
+
+      {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
+      {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
+
+      <div style={{padding:"calc(env(safe-area-inset-top) + 16px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          {tab==="session"?(
+            <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
+          ):(
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
+                <span style={{fontSize:"16px"}}>🍑</span>
+                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
+                <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+              </div>
+              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
+            </div>
+          )}
+          {tab==="home"&&(
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setShowManual(true)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",color:T.textSub,fontWeight:600,fontSize:"12px",padding:"10px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>📅 Manual</button>
+              <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
+            </div>
+          )}
+          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
+          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
+        </div>
+      </div>
+
+      {refreshing&&(
+        <div style={{textAlign:"center",padding:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}}>
+          <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-refresh-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
+          <span className="pumpi-refresh-spin" style={{fontSize:"18px"}}>🍑</span>
+          <span style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>Atualizando...</span>
+        </div>
+      )}
+
+      <div style={{padding:"20px"}}
+        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
+        onTouchEnd={e=>{
+          const dy=e.changedTouches[0].clientY-touchStartY.current;
+          if(dy>80&&tab!=="session"&&!refreshing){
+            touchStartY.current=0;
+            handleRefresh();
+          }
+        }}
+      >
+        {tab==="home"&&(data.sessions.length===0?(
+          <div style={{textAlign:"center",padding:"70px 20px"}}>
+            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
+            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
+          </div>
+        ):data.sessions.map(s=>{
+          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
+          return(
+            <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
+                <div>
+                  <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
+                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
+                </div>
+                <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
+              </div>
+              {total>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[...(s.lower||[]),...(s.upper||[])].slice(0,4).map((ex,i)=><span key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"6px",padding:"3px 8px",color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` · ${ex.weight}kg`:""}</span>)}{total>4&&<span style={{color:T.textMuted,fontSize:"11px",padding:"3px 0",fontFamily:"'DM Sans',sans-serif"}}>+{total-4} mais</span>}</div>}
+            </div>
+          );
+        }))}
+        {tab==="session"&&currentSession&&(
+          <>
+            <SessionView session={currentSession} onUpdate={updateSession} onSave={saveSession} theme={T} onFinish={finishSession} data={data.sessions}/>
+            <button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button>
+          </>
+        )}
+        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
+        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
+      </div>
+
+      {tab!=="session"&&(
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
+          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
+            <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+              <div style={{position:"relative",display:"inline-block"}}>
+                <span style={{fontSize:"20px"}}>{n.icon}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:"-4px",right:"-8px",background:"#ff6b6b",color:"#fff",fontSize:"9px",fontWeight:800,padding:"1px 5px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>{n.badge}</span>}
+              </div>
+              <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
+              {tab===n.id&&<div style={{width:"20px",height:"2px",background:T.accent,borderRadius:"1px"}}/>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
