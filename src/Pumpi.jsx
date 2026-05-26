@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYmR2cHBhdGFzdWN5YnpmemV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDI1NTUsImV4cCI6MjA5NDUxODU1NX0.H4lPCHC-bdlrf1JEXzWd1x-kzHeSdpFq6UFIepjhGUk";
+const DELETED_KEY = "pumpi_deleted_sessions";
 
 const pumpiStorage = {
   getItem: (key) => {
@@ -114,6 +115,30 @@ function sortSessions(sessions = []) {
 
     return Number(b.id || 0) - Number(a.id || 0);
   });
+}
+
+function getDeletedSessionIds() {
+  try {
+    return JSON.parse(localStorage.getItem(DELETED_KEY) || "[]").map(String);
+  } catch {
+    return [];
+  }
+}
+
+function setDeletedSessionIds(ids) {
+  try {
+    localStorage.setItem(DELETED_KEY, JSON.stringify([...new Set(ids.map(String))]));
+  } catch {}
+}
+
+function addDeletedSessionId(id) {
+  const ids = getDeletedSessionIds();
+  setDeletedSessionIds([...ids, String(id)]);
+}
+
+function removeDeletedSessionId(id) {
+  const ids = getDeletedSessionIds();
+  setDeletedSessionIds(ids.filter((x) => x !== String(id)));
 }
 
 function mergeSessionPair(remoteSession, localSession) {
@@ -533,9 +558,12 @@ function FriendsView({theme,user,sessions}){
   const [selectedFriend,setSelectedFriend]=useState(null);
   const [loadingFriends,setLoadingFriends]=useState(true);
 
-  useEffect(()=>{loadFriends();},[]);
+  useEffect(()=>{
+  if(user?.id) loadFriends();
+},[user?.id]);
 
   const loadFriends=async()=>{
+    if(!user?.id) return;
     setLoadingFriends(true);
     try{
       const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
@@ -545,8 +573,24 @@ function FriendsView({theme,user,sessions}){
           .select("*")
           .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
         if(reqsError) throw reqsError;
-        const{data:allProfiles}=await supabase.from("profiles").select("*").neq("id",user.id).limit(50);
-        const getProfile=id=>allProfiles?.find(p=>p.id===id);
+        const profileIds = [
+  ...new Set(
+    (reqs || []).flatMap((r) => [r.requester_id, r.receiver_id])
+  ),
+].filter((id) => id !== user.id);
+
+const { data: involvedProfiles } = await supabase
+  .from("profiles")
+  .select("*")
+  .in("id", profileIds);
+
+const { data: allProfiles } = await supabase
+  .from("profiles")
+  .select("*")
+  .neq("id", user.id)
+  .limit(50);
+
+const getProfile = (id) => involvedProfiles?.find((p) => p.id === id);
         if(reqs&&reqs.length>0){
           const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
             const isMe=r.requester_id===user.id;
@@ -1174,6 +1218,11 @@ export default function Pumpi(){
     const local = localStorage.getItem(STORAGE_KEY);
     const localSessions = local ? JSON.parse(local).sessions || [] : [];
 
+    const deletedIds = getDeletedSessionIds();
+const visibleLocalSessions = localSessions.filter(
+  (s) => !deletedIds.includes(String(s.id))
+);
+
     const { data: rows, error: rowsError } = await supabase
       .from("sessions")
       .select("*")
@@ -1190,12 +1239,15 @@ export default function Pumpi(){
         id: r.id,
       }));
 
-      nextSessions = mergeSessions(remoteSessions, localSessions);
+      nextSessions = mergeSessions(
+  remoteSessions.filter((s) => !deletedIds.includes(String(s.id))),
+  visibleLocalSessions
+);
     } else {
-      nextSessions = sortSessions(localSessions);
+      nextSessions = sortSessions(visibleLocalSessions);
 
-      if (localSessions.length > 0) {
-        for (const s of localSessions) {
+      if (visibleLocalSessions.length > 0) {
+        for (const s of visibleLocalSessions) {
           await saveWithRetry(s, uid);
         }
       }
@@ -1375,7 +1427,7 @@ export default function Pumpi(){
 
   setActiveSession(updated.id);
 
-  saveSession(updated);
+  setTimeout(() => saveSession(updated), 800);
 };
 
   const finishSession = async () => {
@@ -1403,12 +1455,31 @@ export default function Pumpi(){
   saveSession(updated);
 };
 
-  const deleteSession=async(id)=>{
-    const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
-    await save(nd);
-    if(user) await deleteWithRetry(id,user.id);
-    setTab("home");
+  const deleteSession = async (id) => {
+  addDeletedSessionId(id);
+
+  const nd = {
+    ...data,
+    sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
   };
+
+  await save(nd);
+  setTab("home");
+
+  if (user) {
+    setSyncStatus("saving");
+
+    const ok = await deleteWithRetry(id, user.id);
+
+    if (ok) {
+      removeDeletedSessionId(id);
+      setSyncStatus("saved");
+      setTimeout(() => setSyncStatus(null), 3000);
+    } else {
+      setSyncStatus("error");
+    }
+  }
+};
 
   const saveManualSession = async (session) => {
   const nd = {
