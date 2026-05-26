@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
@@ -59,6 +59,7 @@ const PERSONAS = [
   {keys:["crucifixo","voador"],name:"Cristo Redentor",        emoji:"🗿",color:"#4ade80"},
   {keys:["glut","gluteo"],     name:"Bunda Power",            emoji:"🍑",color:"#e879f9"},
 ];
+
 const getPersona = name => {
   const n = name.toLowerCase();
   return PERSONAS.find(p=>p.keys.some(k=>n.includes(k))) || {name,emoji:"🏋️",color:"#94a3b8"};
@@ -103,7 +104,6 @@ function mergeSessions(remote,local){
   });
 }
 
-// Salva com retry automático
 async function saveWithRetry(session, uid, retries=3){
   for(let i=0; i<retries; i++){
     try{
@@ -114,6 +114,22 @@ async function saveWithRetry(session, uid, retries=3){
       console.error(`Save tentativa ${i+1} falhou:`,error.message);
     }catch(e){
       console.error(`Save tentativa ${i+1} exception:`,e.message);
+    }
+    if(i<retries-1) await new Promise(r=>setTimeout(r,1000*(i+1)));
+  }
+  return false;
+}
+
+async function deleteWithRetry(id, uid, retries=3){
+  for(let i=0; i<retries; i++){
+    try{
+      const deletePromise=supabase.from("sessions").delete().eq("id",id).eq("user_id",uid);
+      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),5000));
+      const{error}=await Promise.race([deletePromise,timeoutPromise]);
+      if(!error) return true;
+      console.error(`Delete tentativa ${i+1} falhou:`,error.message);
+    }catch(e){
+      console.error(`Delete tentativa ${i+1} exception:`,e.message);
     }
     if(i<retries-1) await new Promise(r=>setTimeout(r,1000*(i+1)));
   }
@@ -372,42 +388,40 @@ function FriendsView({theme,user,sessions}){
   const loadFriends=async()=>{
     setLoadingFriends(true);
     try{
-      const{data:reqs,error:reqsError}=await supabase
-        .from("friendships")
-        .select("*")
-        .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
-
-      if(reqsError) throw reqsError;
-
-      // Busca profiles separadamente sempre
-      const{data:allProfiles}=await supabase.from("profiles").select("*").neq("id",user.id).limit(50);
-      const getProfile=id=>allProfiles?.find(p=>p.id===id);
-
-      if(reqs&&reqs.length>0){
-        const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
-          const isMe=r.requester_id===user.id;
-          const otherId=isMe?r.receiver_id:r.requester_id;
-          return{id:otherId,username:getProfile(otherId)?.username,friendshipId:r.id};
-        });
-        const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({
-          ...r,requesterUsername:getProfile(r.requester_id)?.username
-        }));
-        const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({
-          ...r,receiverUsername:getProfile(r.receiver_id)?.username
-        }));
-        setFriends(accepted); setPending(pend); setSent(sentReqs);
-
-        const usedIds=[user.id,...reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id)];
-        setSuggestions((allProfiles||[]).filter(p=>!usedIds.includes(p.id)));
-      } else {
-        setFriends([]); setPending([]); setSent([]);
-        setSuggestions(allProfiles||[]);
-      }
-
-      const{data:bts}=await supabase.from("battles").select("*")
-        .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
-        .eq("status","active");
-      if(bts) setBattles(bts);
+      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
+      const fetchPromise=async()=>{
+        const{data:reqs,error:reqsError}=await supabase
+          .from("friendships")
+          .select("*")
+          .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+        if(reqsError) throw reqsError;
+        const{data:allProfiles}=await supabase.from("profiles").select("*").neq("id",user.id).limit(50);
+        const getProfile=id=>allProfiles?.find(p=>p.id===id);
+        if(reqs&&reqs.length>0){
+          const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
+            const isMe=r.requester_id===user.id;
+            const otherId=isMe?r.receiver_id:r.requester_id;
+            return{id:otherId,username:getProfile(otherId)?.username,friendshipId:r.id};
+          });
+          const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({
+            ...r,requesterUsername:getProfile(r.requester_id)?.username
+          }));
+          const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({
+            ...r,receiverUsername:getProfile(r.receiver_id)?.username
+          }));
+          setFriends(accepted); setPending(pend); setSent(sentReqs);
+          const usedIds=[user.id,...reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id)];
+          setSuggestions((allProfiles||[]).filter(p=>!usedIds.includes(p.id)));
+        } else {
+          setFriends([]); setPending([]); setSent([]);
+          setSuggestions(allProfiles||[]);
+        }
+        const{data:bts}=await supabase.from("battles").select("*")
+          .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+          .eq("status","active");
+        if(bts) setBattles(bts);
+      };
+      await Promise.race([fetchPromise(),timeoutPromise]);
     }catch(e){
       console.error("loadFriends falhou:",e.message);
     }finally{
@@ -824,7 +838,6 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
     </div>
   );
 }
-
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
@@ -849,7 +862,7 @@ function MetricsView({sessions,theme}){
   const machinePRs={};
   allExercises.forEach(ex=>{const best=Math.max(...(ex.weightHistory||[]).map(h=>parseFloat(h.weight)||0),0);if(best>0)machinePRs[ex.machine]=Math.max(machinePRs[ex.machine]||0,best);});
   const coiceCount=allExercises.filter(e=>e.machine.toLowerCase().includes("abdutora")).length;
-  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪"},{min:30,label:"Égua Lendária 👑"}];
+  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪️"},{min:30,label:"Égua Lendária 👑"}];
   const coiceLevel=[...coiceLevels].reverse().find(l=>coiceCount>=l.min)||coiceLevels[0];
   const abCount=allExercises.filter(e=>e.machine.toLowerCase().includes("adutora")).length;
   const abLevels=[{min:0,label:"Fechadinha 🌸"},{min:5,label:"Abrindo o Jogo 🦋"},{min:15,label:"Borboleta Livre 🌺"},{min:30,label:"Rainha do Abre & Fecha 👸"}];
@@ -946,7 +959,7 @@ export default function Pumpi(){
   const [showManual,setShowManual]=useState(false);
   const [pendingCount,setPendingCount]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
-  const [syncStatus,setSyncStatus]=useState(null); // null | 'saving' | 'saved' | 'error'
+  const [syncStatus,setSyncStatus]=useState(null);
   const touchStartY=useRef(0);
   const T=theme;
 
@@ -1030,7 +1043,6 @@ export default function Pumpi(){
       }
       const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
       if(pending) setPendingCount(pending.length);
-      // Sincroniza pendentes offline
       try{
         const pendingSync=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
         if(pendingSync.length>0){
@@ -1050,27 +1062,35 @@ export default function Pumpi(){
   };
 
   const saveSession=async(session,uid=user?.id)=>{
-  if(!uid){
-    console.error("saveSession: uid null, não salvou!");
-    setSyncStatus('error');
-    return;
-  }
-  setSyncStatus('saving');
-  const ok=await saveWithRetry(session,uid);
-  if(ok){
-    setSyncStatus('saved');
-    setTimeout(()=>setSyncStatus(null),3000);
-  } else {
-    setSyncStatus('error');
-    try{
-      const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-      if(!pending.includes(session.id)){
-        localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
-      }
-    }catch{}
-  }
-};
-
+    if(!uid) return;
+    setSyncStatus('saving');
+    const ok=await saveWithRetry(session,uid);
+    if(ok){
+      setSyncStatus('saved');
+      setTimeout(()=>setSyncStatus(null),3000);
+    } else {
+      setSyncStatus('error');
+      try{
+        const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+        if(!pending.includes(session.id)){
+          localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
+        }
+      }catch{}
+      // Tenta de novo após 10 segundos automaticamente
+      setTimeout(async()=>{
+        if(!uid) return;
+        const ok2=await saveWithRetry(session,uid);
+        if(ok2){
+          setSyncStatus('saved');
+          setTimeout(()=>setSyncStatus(null),3000);
+          try{
+            const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+            localStorage.setItem(PENDING_KEY,JSON.stringify(pending.filter(id=>id!==session.id)));
+          }catch{}
+        }
+      },10000);
+    }
+  };
 
   const save=async(nd)=>{
     setData(nd);
@@ -1101,7 +1121,7 @@ export default function Pumpi(){
   const deleteSession=async(id)=>{
     const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
     await save(nd);
-    if(user) await supabase.from("sessions").delete().eq("id",id).eq("user_id",user.id);
+    if(user) await deleteWithRetry(id,user.id);
     setTab("home");
   };
 
