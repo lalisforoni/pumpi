@@ -107,13 +107,15 @@ function mergeSessions(remote,local){
 async function saveWithRetry(session, uid, retries=3){
   for(let i=0; i<retries; i++){
     try{
-      const{error}=await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+      const savePromise=supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),5000));
+      const{error}=await Promise.race([savePromise,timeoutPromise]);
       if(!error) return true;
       console.error(`Save tentativa ${i+1} falhou:`,error.message);
     }catch(e){
       console.error(`Save tentativa ${i+1} exception:`,e.message);
     }
-    await new Promise(r=>setTimeout(r,1000*(i+1)));
+    if(i<retries-1) await new Promise(r=>setTimeout(r,1000*(i+1)));
   }
   return false;
 }
