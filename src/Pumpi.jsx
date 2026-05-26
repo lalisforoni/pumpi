@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
@@ -101,6 +101,21 @@ function mergeSessions(remote,local){
     });
     return{...r,lower:mergeExs(r.lower,l.lower),upper:mergeExs(r.upper,l.upper)};
   });
+}
+
+// Salva com retry automático
+async function saveWithRetry(session, uid, retries=3){
+  for(let i=0; i<retries; i++){
+    try{
+      const{error}=await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
+      if(!error) return true;
+      console.error(`Save tentativa ${i+1} falhou:`,error.message);
+    }catch(e){
+      console.error(`Save tentativa ${i+1} exception:`,e.message);
+    }
+    await new Promise(r=>setTimeout(r,1000*(i+1)));
+  }
+  return false;
 }
 
 function Confetti({onDone}){
@@ -251,7 +266,7 @@ function ManualSessionModal({theme,onSave,onClose,allSessions}){
     const dur=durMin?parseInt(durMin)*60000:0;
     const addHistory=(exs)=>exs.map(ex=>({
       ...ex,
-      weightHistory: ex.weight ? [{weight:ex.weight,reps:ex.reps,rp:ex.rp,series:ex.series,date:dateObj.toISOString()}] : [],
+      weightHistory: ex.weight?[{weight:ex.weight,reps:ex.reps,rp:ex.rp,series:ex.series,date:dateObj.toISOString()}]:[],
     }));
     const session={
       id:Date.now(),
@@ -355,49 +370,42 @@ function FriendsView({theme,user,sessions}){
   const loadFriends=async()=>{
     setLoadingFriends(true);
     try{
-      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
-      const fetchPromise=async()=>{
-        // Query simples sem JOIN para evitar falhas no PWA
-        const{data:reqs,error:reqsError}=await supabase
-          .from("friendships")
-          .select("*")
-          .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+      const{data:reqs,error:reqsError}=await supabase
+        .from("friendships")
+        .select("*")
+        .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-        if(reqsError) throw reqsError;
+      if(reqsError) throw reqsError;
 
-        if(reqs&&reqs.length>0){
-          // Busca profiles separadamente
-          const allIds=[...new Set(reqs.flatMap(r=>[r.requester_id,r.receiver_id]).filter(id=>id!==user.id))];
-          const{data:profiles}=await supabase.from("profiles").select("*").in("id",allIds);
-          const getProfile=id=>profiles?.find(p=>p.id===id);
+      // Busca profiles separadamente sempre
+      const{data:allProfiles}=await supabase.from("profiles").select("*").neq("id",user.id).limit(50);
+      const getProfile=id=>allProfiles?.find(p=>p.id===id);
 
-          const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
-            const isMe=r.requester_id===user.id;
-            const otherId=isMe?r.receiver_id:r.requester_id;
-            return{id:otherId,username:getProfile(otherId)?.username,friendshipId:r.id};
-          });
-          const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({
-            ...r,requesterUsername:getProfile(r.requester_id)?.username
-          }));
-          const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({
-            ...r,receiverUsername:getProfile(r.receiver_id)?.username
-          }));
-          setFriends(accepted); setPending(pend); setSent(sentReqs);
+      if(reqs&&reqs.length>0){
+        const accepted=reqs.filter(r=>r.status==="accepted").map(r=>{
+          const isMe=r.requester_id===user.id;
+          const otherId=isMe?r.receiver_id:r.requester_id;
+          return{id:otherId,username:getProfile(otherId)?.username,friendshipId:r.id};
+        });
+        const pend=reqs.filter(r=>r.status==="pending"&&r.receiver_id===user.id).map(r=>({
+          ...r,requesterUsername:getProfile(r.requester_id)?.username
+        }));
+        const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({
+          ...r,receiverUsername:getProfile(r.receiver_id)?.username
+        }));
+        setFriends(accepted); setPending(pend); setSent(sentReqs);
 
-          const friendIds=accepted.map(f=>f.id);
-          const pendingIds=reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id);
-          const excluded=[user.id,...friendIds,...pendingIds];
-          const{data:profs}=await supabase.from("profiles").select("*").not("id","in",`(${excluded.join(",")})`).limit(20);
-          if(profs) setSuggestions(profs);
-        } else {
-          // Sem friendships — mostra todos os outros usuários como sugestão
-          const{data:profs}=await supabase.from("profiles").select("*").neq("id",user.id).limit(20);
-          if(profs) setSuggestions(profs);
-        }
-        const{data:bts}=await supabase.from("battles").select("*").or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`).eq("status","active");
-        if(bts) setBattles(bts);
-      };
-      await Promise.race([fetchPromise(),timeoutPromise]);
+        const usedIds=[user.id,...reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id)];
+        setSuggestions((allProfiles||[]).filter(p=>!usedIds.includes(p.id)));
+      } else {
+        setFriends([]); setPending([]); setSent([]);
+        setSuggestions(allProfiles||[]);
+      }
+
+      const{data:bts}=await supabase.from("battles").select("*")
+        .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+        .eq("status","active");
+      if(bts) setBattles(bts);
     }catch(e){
       console.error("loadFriends falhou:",e.message);
     }finally{
@@ -417,7 +425,6 @@ function FriendsView({theme,user,sessions}){
   const sendRequest=async(receiverId)=>{
     try{
       await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
-      setSuggestions(p=>p.filter(s=>s.id!==receiverId));
       setSearchEmail(""); setSearchResult(null);
       await loadFriends();
     }catch(e){ alert("Erro ao enviar pedido: "+e.message); }
@@ -776,45 +783,7 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
             </div>
           </div>
           <div style={{display:"flex",gap:"6px"}}>
-            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
-            {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
-            {session.status==="done"&&session.manual&&(
-              editMode
-                ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
-                :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
-            )}
-            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
-          </div>
-        </div>
-      </div>
-      {groups.map(g=>(
-        <div key={g.key} style={{marginBottom:"24px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-              <span style={{fontSize:"15px"}}>{g.emoji}</span>
-              <span style={{color:g.color,fontSize:"12px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif"}}>{g.label}</span>
-              <span style={{color:theme.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>({session[g.key]?.length||0})</span>
-            </div>
-            {!readonly&&<button onClick={()=>setModal(g.key)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",color:theme.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>}
-          </div>
-          {(session[g.key]||[]).length===0?(
-            <div style={{textAlign:"center",padding:"18px",color:theme.textMuted,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",border:`1px dashed ${theme.bgCardBorder}`,borderRadius:"10px"}}>
-              {readonly?"Nenhum exercício registrado":"Adicione uma máquina"}
-            </div>
-          ):(session[g.key]||[]).map(ex=>(
-            <ExerciseRow key={ex.id} exercise={ex} theme={theme} readonly={readonly}
-              onChange={d=>updEx(g.key,ex.id,d)}
-              onDelete={()=>delEx(g.key,ex.id)}
-              onShowHistory={()=>setHistModal(ex.id)}
-            />
-          ))}
-        </div>
-      ))}
-      {modal&&<AddMachineModal group={modal} theme={theme} onAdd={m=>addEx(modal,m)} onClose={()=>setModal(null)} existingMachines={(session[modal]||[]).map(e=>e.machine)}/>}
-      {histEx&&<HistoryModal machine={histEx.machine} history={histEx.weightHistory||[]} theme={theme} onClose={()=>setHistModal(null)}/>}
-    </div>
-  );
-}
+            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
@@ -936,6 +905,7 @@ export default function Pumpi(){
   const [showManual,setShowManual]=useState(false);
   const [pendingCount,setPendingCount]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
+  const [syncStatus,setSyncStatus]=useState(null); // null | 'saving' | 'saved' | 'error'
   const touchStartY=useRef(0);
   const T=theme;
 
@@ -1011,7 +981,7 @@ export default function Pumpi(){
             if(parsed.sessions?.length>0){
               setData(parsed);
               for(const s of parsed.sessions){
-                await supabase.from("sessions").upsert({id:s.id,user_id:uid,data:s},{onConflict:"id"});
+                await saveWithRetry(s,uid);
               }
             }
           }
@@ -1019,6 +989,7 @@ export default function Pumpi(){
       }
       const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
       if(pending) setPendingCount(pending.length);
+      // Sincroniza pendentes offline
       try{
         const pendingSync=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
         if(pendingSync.length>0){
@@ -1026,7 +997,7 @@ export default function Pumpi(){
           const localSessions=local?JSON.parse(local).sessions||[]:[];
           for(const id of pendingSync){
             const s=localSessions.find(s=>s.id===id);
-            if(s) await supabase.from("sessions").upsert({id:s.id,user_id:uid,data:s},{onConflict:"id"});
+            if(s) await saveWithRetry(s,uid);
           }
           localStorage.removeItem(PENDING_KEY);
         }
@@ -1038,16 +1009,20 @@ export default function Pumpi(){
   };
 
   const saveSession=async(session,uid=user?.id)=>{
-    if(uid){
-      const{error}=await supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
-      if(error){
-        try{
-          const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-          if(!pending.includes(session.id)){
-            localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
-          }
-        }catch{}
-      }
+    if(!uid) return;
+    setSyncStatus('saving');
+    const ok=await saveWithRetry(session,uid);
+    if(ok){
+      setSyncStatus('saved');
+      setTimeout(()=>setSyncStatus(null),3000);
+    } else {
+      setSyncStatus('error');
+      try{
+        const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+        if(!pending.includes(session.id)){
+          localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
+        }
+      }catch{}
     }
   };
 
@@ -1139,6 +1114,9 @@ export default function Pumpi(){
         select option{background:${T.modalBg};color:${T.text};}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}
+        .pumpi-refresh-spin{animation:spin 1s linear infinite;display:inline-block;}
       `}</style>
 
       {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
@@ -1154,6 +1132,9 @@ export default function Pumpi(){
                 <span style={{fontSize:"16px"}}>🍑</span>
                 <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
                 <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+                {syncStatus==='saving'&&<span className="pumpi-spin" style={{fontSize:"12px",marginLeft:"4px"}}>🍑</span>}
+                {syncStatus==='saved'&&<span style={{fontSize:"12px",marginLeft:"4px"}}>✅</span>}
+                {syncStatus==='error'&&<span style={{fontSize:"12px",marginLeft:"4px",color:T.danger}}>❌ Sem sync</span>}
               </div>
               <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
             </div>
@@ -1171,7 +1152,6 @@ export default function Pumpi(){
 
       {refreshing&&(
         <div style={{textAlign:"center",padding:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}}>
-          <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-refresh-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
           <span className="pumpi-refresh-spin" style={{fontSize:"18px"}}>🍑</span>
           <span style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>Atualizando...</span>
         </div>
