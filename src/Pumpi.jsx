@@ -1009,22 +1009,27 @@ export default function Pumpi(){
   };
 
   const saveSession=async(session,uid=user?.id)=>{
-    if(!uid) return;
-    setSyncStatus('saving');
-    const ok=await saveWithRetry(session,uid);
-    if(ok){
-      setSyncStatus('saved');
-      setTimeout(()=>setSyncStatus(null),3000);
-    } else {
-      setSyncStatus('error');
-      try{
-        const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-        if(!pending.includes(session.id)){
-          localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
-        }
-      }catch{}
-    }
-  };
+  if(!uid){
+    console.error("saveSession: uid null, não salvou!");
+    setSyncStatus('error');
+    return;
+  }
+  setSyncStatus('saving');
+  const ok=await saveWithRetry(session,uid);
+  if(ok){
+    setSyncStatus('saved');
+    setTimeout(()=>setSyncStatus(null),3000);
+  } else {
+    setSyncStatus('error');
+    try{
+      const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
+      if(!pending.includes(session.id)){
+        localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
+      }
+    }catch{}
+  }
+};
+
 
   const save=async(nd)=>{
     setData(nd);
