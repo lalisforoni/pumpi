@@ -172,7 +172,7 @@ function mergeSessions(remote = [], local = []) {
   );
 }
 
-async function function logSupabaseError(label, error, extra = {}) {
+async function logSupabaseError(label, error, extra = {}) {
   console.error(label, {
     message: error?.message,
     code: error?.code,
@@ -390,7 +390,7 @@ function LoginScreen({theme,onLogin}){
         <input placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)} type="password" style={{...inp,marginBottom:"16px"}}/>
         {error&&<p style={{color:T.danger,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",marginBottom:"10px",textAlign:"center"}}>{error}</p>}
         {success&&<p style={{color:T.green,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",marginBottom:"10px",textAlign:"center"}}>{success}</p>}
-        <button onClick={handleSubmit} disabled={loading} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"16px",padding:"16px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:loading?.7:1}}>
+        <button onClick={handleSubmit} disabled={loading} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"16px",padding:"16px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:loading?0.7:1}}>
           {loading?"...":(mode==="login"?"Entrar 🍑":"Criar conta 🍑")}
         </button>
         {mode==="login"&&(
@@ -847,7 +847,7 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
   };
 
   return(
-    <div style={{padding:"10px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`,marginBottom:"8px",opacity:readonly?.72:1}}>
+    <div style={{padding:"10px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`,marginBottom:"8px",opacity:readonly?0.72:1}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",alignItems:"center"}}>
         <div>
           <span style={{color:theme.text,fontSize:"13px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{exercise.machine}</span>
@@ -875,7 +875,7 @@ function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
           onChange={e=>!readonly&&onChange({...exercise,rp:e.target.value})}
           style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
         />
-        <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?.4:1}}>×</button>
+        <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?0.4:1}}>×</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"3px 0 0"}}>
         {["","Peso","Sér","Reps","RP",""].map((h,i)=>(
