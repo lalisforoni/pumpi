@@ -783,7 +783,46 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
             </div>
           </div>
           <div style={{display:"flex",gap:"6px"}}>
-            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",
+            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
+            {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
+            {session.status==="done"&&session.manual&&(
+              editMode
+                ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
+                :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
+            )}
+            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
+          </div>
+        </div>
+      </div>
+      {groups.map(g=>(
+        <div key={g.key} style={{marginBottom:"24px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+              <span style={{fontSize:"15px"}}>{g.emoji}</span>
+              <span style={{color:g.color,fontSize:"12px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif"}}>{g.label}</span>
+              <span style={{color:theme.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>({session[g.key]?.length||0})</span>
+            </div>
+            {!readonly&&<button onClick={()=>setModal(g.key)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",color:theme.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>}
+          </div>
+          {(session[g.key]||[]).length===0?(
+            <div style={{textAlign:"center",padding:"18px",color:theme.textMuted,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",border:`1px dashed ${theme.bgCardBorder}`,borderRadius:"10px"}}>
+              {readonly?"Nenhum exercício registrado":"Adicione uma máquina"}
+            </div>
+          ):(session[g.key]||[]).map(ex=>(
+            <ExerciseRow key={ex.id} exercise={ex} theme={theme} readonly={readonly}
+              onChange={d=>updEx(g.key,ex.id,d)}
+              onDelete={()=>delEx(g.key,ex.id)}
+              onShowHistory={()=>setHistModal(ex.id)}
+            />
+          ))}
+        </div>
+      ))}
+      {modal&&<AddMachineModal group={modal} theme={theme} onAdd={m=>addEx(modal,m)} onClose={()=>setModal(null)} existingMachines={(session[modal]||[]).map(e=>e.machine)}/>}
+      {histEx&&<HistoryModal machine={histEx.machine} history={histEx.weightHistory||[]} theme={theme} onClose={()=>setHistModal(null)}/>}
+    </div>
+  );
+}
+
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
@@ -808,7 +847,7 @@ function MetricsView({sessions,theme}){
   const machinePRs={};
   allExercises.forEach(ex=>{const best=Math.max(...(ex.weightHistory||[]).map(h=>parseFloat(h.weight)||0),0);if(best>0)machinePRs[ex.machine]=Math.max(machinePRs[ex.machine]||0,best);});
   const coiceCount=allExercises.filter(e=>e.machine.toLowerCase().includes("abdutora")).length;
-  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪️"},{min:30,label:"Égua Lendária 👑"}];
+  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪"},{min:30,label:"Égua Lendária 👑"}];
   const coiceLevel=[...coiceLevels].reverse().find(l=>coiceCount>=l.min)||coiceLevels[0];
   const abCount=allExercises.filter(e=>e.machine.toLowerCase().includes("adutora")).length;
   const abLevels=[{min:0,label:"Fechadinha 🌸"},{min:5,label:"Abrindo o Jogo 🦋"},{min:15,label:"Borboleta Livre 🌺"},{min:30,label:"Rainha do Abre & Fecha 👸"}];
