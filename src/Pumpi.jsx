@@ -90,33 +90,183 @@ function calcDuration(a,b){
   return hh>0?`${hh}h ${m%60}min`:`${m}min`;
 }
 
-function mergeSessions(remote,local){
-  return remote.map(r=>{
-    const l=local.find(s=>s.id===r.id);
-    if(!l) return r;
-    const mergeExs=(remExs=[],locExs=[])=>remExs.map(ex=>{
-      const locEx=locExs.find(e=>e.machine===ex.machine);
-      const rh=ex.weightHistory||[];
-      const lh=locEx?.weightHistory||[];
-      return{...ex,weightHistory:rh.length>=lh.length?rh:lh};
-    });
-    return{...r,lower:mergeExs(r.lower,l.lower),upper:mergeExs(r.upper,l.upper)};
+function getSessionSortTime(session) {
+  const dateTime = Date.parse(session?.date);
+
+  if (!Number.isNaN(dateTime)) {
+    return dateTime;
+  }
+
+  const fallback =
+    session?.finishedAt ??
+    session?.startedAt ??
+    session?.id ??
+    0;
+
+  return Number(fallback) || 0;
+}
+
+function sortSessions(sessions = []) {
+  return [...sessions].sort((a, b) => {
+    const dateDiff = getSessionSortTime(b) - getSessionSortTime(a);
+
+    if (dateDiff !== 0) return dateDiff;
+
+    return Number(b.id || 0) - Number(a.id || 0);
   });
 }
 
-async function saveWithRetry(session, uid, retries=3){
-  for(let i=0; i<retries; i++){
-    try{
-      const savePromise=supabase.from("sessions").upsert({id:session.id,user_id:uid,data:session},{onConflict:"id"});
-      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),5000));
-      const{error}=await Promise.race([savePromise,timeoutPromise]);
-      if(!error) return true;
-      console.error(`Save tentativa ${i+1} falhou:`,error.message);
-    }catch(e){
-      console.error(`Save tentativa ${i+1} exception:`,e.message);
-    }
-    if(i<retries-1) await new Promise(r=>setTimeout(r,1000*(i+1)));
+function mergeSessionPair(remoteSession, localSession) {
+  if (!remoteSession) return localSession;
+  if (!localSession) return remoteSession;
+
+  const mergeExs = (remExs = [], locExs = []) => {
+    const machines = new Set([
+      ...remExs.map((e) => e.machine),
+      ...locExs.map((e) => e.machine),
+    ]);
+
+    return [...machines].map((machine) => {
+      const remEx = remExs.find((e) => e.machine === machine);
+      const locEx = locExs.find((e) => e.machine === machine);
+
+      if (!remEx) return locEx;
+      if (!locEx) return remEx;
+
+      const remoteHistory = remEx.weightHistory || [];
+      const localHistory = locEx.weightHistory || [];
+
+      return {
+        ...remEx,
+        ...locEx,
+        weightHistory:
+          remoteHistory.length >= localHistory.length
+            ? remoteHistory
+            : localHistory,
+      };
+    });
+  };
+
+  return {
+    ...remoteSession,
+    ...localSession,
+    id: remoteSession.id ?? localSession.id,
+    lower: mergeExs(remoteSession.lower, localSession.lower),
+    upper: mergeExs(remoteSession.upper, localSession.upper),
+  };
+}
+
+function mergeSessions(remote = [], local = []) {
+  const remoteById = new Map(remote.map((s) => [String(s.id), s]));
+  const localById = new Map(local.map((s) => [String(s.id), s]));
+
+  const ids = new Set([
+    ...remoteById.keys(),
+    ...localById.keys(),
+  ]);
+
+  return sortSessions(
+    [...ids].map((id) =>
+      mergeSessionPair(remoteById.get(id), localById.get(id))
+    )
+  );
+}
+
+async function function logSupabaseError(label, error, extra = {}) {
+  console.error(label, {
+    message: error?.message,
+    code: error?.code,
+    details: error?.details,
+    hint: error?.hint,
+    name: error?.name,
+    status: error?.status,
+    ...extra,
+  });
+}
+
+async function saveOnce(session, uid) {
+  const {
+    data: { user: authUser },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) throw userError;
+  if (!authUser?.id) throw new Error("Sem usuário autenticado no Supabase");
+
+  if (authUser.id !== uid) {
+    throw new Error(`UID divergente. auth=${authUser.id}, esperado=${uid}`);
   }
+
+  const normalizedId = Number(session.id);
+
+  const payload = {
+    id: normalizedId,
+    user_id: authUser.id,
+    data: {
+      ...session,
+      id: normalizedId,
+    },
+  };
+
+  const insertResult = await supabase
+    .from("sessions")
+    .insert(payload)
+    .select("id,user_id")
+    .single();
+
+  if (!insertResult.error) {
+    console.info("Save INSERT OK:", insertResult.data);
+    return true;
+  }
+
+  if (insertResult.error.code !== "23505") {
+    logSupabaseError("INSERT falhou", insertResult.error, {
+      status: insertResult.status,
+      statusText: insertResult.statusText,
+      payload,
+    });
+
+    throw insertResult.error;
+  }
+
+  const updateResult = await supabase
+    .from("sessions")
+    .update({
+      data: payload.data,
+    })
+    .eq("id", normalizedId)
+    .eq("user_id", authUser.id)
+    .select("id,user_id")
+    .single();
+
+  if (updateResult.error) {
+    logSupabaseError("UPDATE falhou", updateResult.error, {
+      status: updateResult.status,
+      statusText: updateResult.statusText,
+      payload,
+    });
+
+    throw updateResult.error;
+  }
+
+  console.info("Save UPDATE OK:", updateResult.data);
+  return true;
+}
+
+async function saveWithRetry(session, uid, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const ok = await saveOnce(session, uid);
+      if (ok) return true;
+    } catch (e) {
+      logSupabaseError(`Save tentativa ${i + 1} exception`, e);
+
+      if (i < retries - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  }
+
   return false;
 }
 
@@ -1011,112 +1161,247 @@ export default function Pumpi(){
     return()=>subscription.unsubscribe();
   },[]);
 
-  const loadData=async(uid)=>{
-    try{
-      const{data:prof}=await supabase.from("profiles").select("*").eq("id",uid).single();
-      if(prof) setProfile(prof);
-      const{data:rows}=await supabase.from("sessions").select("*").eq("user_id",uid).order("id",{ascending:false});
-      if(rows&&rows.length>0){
-        const remoteSessions=rows.map(r=>({...r.data,id:r.id}));
-        try{
-          const local=localStorage.getItem(STORAGE_KEY);
-          const localSessions=local?JSON.parse(local).sessions||[]:[];
-          const merged=mergeSessions(remoteSessions,localSessions);
-          setData({sessions:merged});
-          localStorage.setItem(STORAGE_KEY,JSON.stringify({sessions:merged}));
-        }catch{
-          setData({sessions:remoteSessions});
+  const loadData = async (uid) => {
+  try {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", uid)
+      .maybeSingle();
+
+    if (prof) setProfile(prof);
+
+    const local = localStorage.getItem(STORAGE_KEY);
+    const localSessions = local ? JSON.parse(local).sessions || [] : [];
+
+    const { data: rows, error: rowsError } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("user_id", uid)
+      .order("id", { ascending: false });
+
+    if (rowsError) throw rowsError;
+
+    let nextSessions = [];
+
+    if (rows && rows.length > 0) {
+      const remoteSessions = rows.map((r) => ({
+        ...r.data,
+        id: r.id,
+      }));
+
+      nextSessions = mergeSessions(remoteSessions, localSessions);
+    } else {
+      nextSessions = sortSessions(localSessions);
+
+      if (localSessions.length > 0) {
+        for (const s of localSessions) {
+          await saveWithRetry(s, uid);
         }
-      } else {
-        try{
-          const local=localStorage.getItem(STORAGE_KEY);
-          if(local){
-            const parsed=JSON.parse(local);
-            if(parsed.sessions?.length>0){
-              setData(parsed);
-              for(const s of parsed.sessions){
-                await saveWithRetry(s,uid);
-              }
-            }
-          }
-        }catch{}
       }
-      const{data:pending}=await supabase.from("friendships").select("*").eq("receiver_id",uid).eq("status","pending");
-      if(pending) setPendingCount(pending.length);
-      try{
-        const pendingSync=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-        if(pendingSync.length>0){
-          const local=localStorage.getItem(STORAGE_KEY);
-          const localSessions=local?JSON.parse(local).sessions||[]:[];
-          for(const id of pendingSync){
-            const s=localSessions.find(s=>s.id===id);
-            if(s) await saveWithRetry(s,uid);
+    }
+
+    nextSessions = sortSessions(nextSessions);
+
+    setData({ sessions: nextSessions });
+
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ sessions: nextSessions })
+      );
+    } catch {}
+
+    const { data: pending } = await supabase
+      .from("friendships")
+      .select("*")
+      .eq("receiver_id", uid)
+      .eq("status", "pending");
+
+    if (pending) setPendingCount(pending.length);
+
+    try {
+      const pendingSync = JSON.parse(
+        localStorage.getItem(PENDING_KEY) || "[]"
+      ).map(String);
+
+      if (pendingSync.length > 0) {
+        const stillPending = [];
+
+        for (const id of pendingSync) {
+          const s = nextSessions.find((session) => String(session.id) === id);
+
+          if (!s) continue;
+
+          const ok = await saveWithRetry(s, uid);
+
+          if (!ok) {
+            stillPending.push(id);
           }
+        }
+
+        if (stillPending.length > 0) {
+          localStorage.setItem(PENDING_KEY, JSON.stringify(stillPending));
+        } else {
           localStorage.removeItem(PENDING_KEY);
         }
-      }catch{}
-    }catch(e){
-      console.error("loadData falhou:",e.message);
-      try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
+      }
+    } catch (e) {
+      console.error("Falha ao processar fila pendente:", e);
     }
-  };
+  } catch (e) {
+    console.error("loadData falhou:", e.message);
 
-  const saveSession=async(session,uid=user?.id)=>{
-    if(!uid) return;
-    setSyncStatus('saving');
-    const ok=await saveWithRetry(session,uid);
-    if(ok){
-      setSyncStatus('saved');
-      setTimeout(()=>setSyncStatus(null),3000);
-    } else {
-      setSyncStatus('error');
-      try{
-        const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-        if(!pending.includes(session.id)){
-          localStorage.setItem(PENDING_KEY,JSON.stringify([...pending,session.id]));
-        }
-      }catch{}
-      // Tenta de novo após 10 segundos automaticamente
-      setTimeout(async()=>{
-        if(!uid) return;
-        const ok2=await saveWithRetry(session,uid);
-        if(ok2){
-          setSyncStatus('saved');
-          setTimeout(()=>setSyncStatus(null),3000);
-          try{
-            const pending=JSON.parse(localStorage.getItem(PENDING_KEY)||"[]");
-            localStorage.setItem(PENDING_KEY,JSON.stringify(pending.filter(id=>id!==session.id)));
-          }catch{}
-        }
-      },10000);
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+
+      if (s) {
+        const parsed = JSON.parse(s);
+
+        setData({
+          ...parsed,
+          sessions: sortSessions(parsed.sessions || []),
+        });
+      }
+    } catch {}
+  }
+};
+  
+ const saveSession = async (session, uid = user?.id) => {
+  if (!uid) return false;
+
+  setSyncStatus("saving");
+
+  const ok = await saveWithRetry(session, uid);
+
+  if (ok) {
+    setSyncStatus("saved");
+    setTimeout(() => setSyncStatus(null), 3000);
+
+    try {
+      const id = String(session.id);
+      const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+
+      localStorage.setItem(
+        PENDING_KEY,
+        JSON.stringify(pending.filter((pendingId) => pendingId !== id))
+      );
+    } catch {}
+
+    return true;
+  }
+
+  setSyncStatus("error");
+
+  try {
+    const id = String(session.id);
+    const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+
+    if (!pending.includes(id)) {
+      localStorage.setItem(PENDING_KEY, JSON.stringify([...pending, id]));
     }
+  } catch {}
+
+  setTimeout(async () => {
+    if (!uid) return;
+
+    const ok2 = await saveWithRetry(session, uid);
+
+    if (ok2) {
+      setSyncStatus("saved");
+      setTimeout(() => setSyncStatus(null), 3000);
+
+      try {
+        const id = String(session.id);
+        const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+
+        localStorage.setItem(
+          PENDING_KEY,
+          JSON.stringify(pending.filter((pendingId) => pendingId !== id))
+        );
+      } catch {}
+    }
+  }, 10000);
+
+  return false;
+};
+
+  const save = async (nd) => {
+  const normalized = {
+    ...nd,
+    sessions: sortSessions(nd.sessions || []),
   };
 
-  const save=async(nd)=>{
-    setData(nd);
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(nd));}catch{}
+  setData(normalized);
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  } catch {}
+};
+
+  const newSession = async () => {
+  const s = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    status: "pending",
+    startedAt: null,
+    finishedAt: null,
+    lower: [],
+    upper: [],
   };
 
-  const newSession=async()=>{
-    const s={id:Date.now(),date:new Date().toISOString(),status:"pending",startedAt:null,finishedAt:null,lower:[],upper:[]};
-    const nd={...data,sessions:[s,...data.sessions]};
-    await save(nd); await saveSession(s);
-    setActiveSession(s.id); setTab("session");
+  const nd = {
+    ...data,
+    sessions: [s, ...data.sessions],
   };
 
-  const updateSession=async(updated)=>{
-    const nd={...data,sessions:data.sessions.map(s=>s.id===updated.id?updated:s)};
-    await save(nd); await saveSession(updated);
-    setActiveSession(updated.id);
+  await save(nd);
+
+  setActiveSession(s.id);
+  setTab("session");
+
+  saveSession(s);
+};
+
+  const updateSession = async (updated) => {
+  const nd = {
+    ...data,
+    sessions: data.sessions.map((s) =>
+      s.id === updated.id ? updated : s
+    ),
   };
 
-  const finishSession=async()=>{
-    const s=data.sessions.find(s=>s.id===activeSession); if(!s) return;
-    const updated={...s,status:"done",finishedAt:Date.now()};
-    const nd={...data,sessions:data.sessions.map(s=>s.id===activeSession?updated:s)};
-    await save(nd); await saveSession(updated);
-    setCelebration(true);
+  await save(nd);
+
+  setActiveSession(updated.id);
+
+  saveSession(updated);
+};
+
+  const finishSession = async () => {
+  const s = data.sessions.find((s) => s.id === activeSession);
+
+  if (!s) return;
+
+  const updated = {
+    ...s,
+    status: "done",
+    finishedAt: Date.now(),
   };
+
+  const nd = {
+    ...data,
+    sessions: data.sessions.map((item) =>
+      item.id === activeSession ? updated : item
+    ),
+  };
+
+  await save(nd);
+
+  setCelebration(true);
+
+  saveSession(updated);
+};
 
   const deleteSession=async(id)=>{
     const nd={...data,sessions:data.sessions.filter(s=>s.id!==id)};
@@ -1125,11 +1410,20 @@ export default function Pumpi(){
     setTab("home");
   };
 
-  const saveManualSession=async(session)=>{
-    const nd={...data,sessions:[session,...data.sessions]};
-    await save(nd); await saveSession(session);
-    setShowManual(false);
+  const saveManualSession = async (session) => {
+  const nd = {
+    ...data,
+    sessions: [session, ...data.sessions],
   };
+
+  await save(nd);
+
+  setShowManual(false);
+  setActiveSession(null);
+  setTab("home");
+
+  saveSession(session);
+};
 
   const logout=async()=>{
     await supabase.auth.signOut();
@@ -1238,7 +1532,7 @@ export default function Pumpi(){
             <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
             <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
           </div>
-        ):data.sessions.map(s=>{
+        ):sortSessions(data.sessions).map(s=>{
           const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
           return(
             <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
@@ -1253,12 +1547,108 @@ export default function Pumpi(){
             </div>
           );
         }))}
-        {tab==="session"&&currentSession&&(
-          <>
-            <SessionView session={currentSession} onUpdate={updateSession} onSave={saveSession} theme={T} onFinish={finishSession} data={data.sessions}/>
-            <button onClick={()=>deleteSession(currentSession.id)} style={{marginTop:"24px",background:"transparent",border:`1px solid ${T.danger}30`,borderRadius:"12px",color:T.danger,fontSize:"13px",padding:"12px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:.6}}>Excluir sessão</button>
-          </>
-        )}
+        {tab === "session" && currentSession && (
+  <>
+    <SessionView
+      session={currentSession}
+      onUpdate={updateSession}
+      onSave={saveSession}
+      theme={T}
+      onFinish={finishSession}
+      data={data.sessions}
+    />
+
+    <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
+      {currentSession.status === "pending" && (
+        <button
+          onClick={() =>
+            updateSession({
+              ...currentSession,
+              status: "active",
+              startedAt: Date.now(),
+            })
+          }
+          style={{
+            background: T.accent,
+            border: "none",
+            borderRadius: "14px",
+            color: T.accentText,
+            fontWeight: 800,
+            fontSize: "15px",
+            padding: "15px",
+            width: "100%",
+            cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
+            boxShadow: `0 4px 16px ${T.accent}35`,
+          }}
+        >
+          Começar treino 🍑
+        </button>
+      )}
+
+      {currentSession.status === "active" && (
+        <button
+          onClick={finishSession}
+          style={{
+            background: T.green,
+            border: "none",
+            borderRadius: "14px",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: "15px",
+            padding: "15px",
+            width: "100%",
+            cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
+            boxShadow: `0 4px 16px ${T.green}35`,
+          }}
+        >
+          Finalizar seu treino 🍑
+        </button>
+      )}
+
+      {currentSession.status === "done" && (
+        <>
+          <button
+            onClick={() => setTab("home")}
+            style={{
+              background: T.accent,
+              border: "none",
+              borderRadius: "14px",
+              color: T.accentText,
+              fontWeight: 800,
+              fontSize: "15px",
+              padding: "15px",
+              width: "100%",
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+            }}
+          >
+            Voltar para meus treinos 🍑
+          </button>
+
+          <button
+            onClick={() => deleteSession(currentSession.id)}
+            style={{
+              background: "transparent",
+              border: `1px solid ${T.danger}30`,
+              borderRadius: "12px",
+              color: T.danger,
+              fontSize: "13px",
+              padding: "12px",
+              width: "100%",
+              cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif",
+              opacity: 0.65,
+            }}
+          >
+            Excluir sessão
+          </button>
+        </>
+      )}
+    </div>
+  </>
+)}
         {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
