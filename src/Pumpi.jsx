@@ -700,7 +700,7 @@ function FriendsView({theme,user,sessions}){
     };
 
     try {
-      await Promise.race([task(), timeout]);
+      await task();
     } catch (e) {
       console.error("loadFriends falhou:", e);
       if (alive) {
@@ -1339,7 +1339,7 @@ export default function Pumpi(){
             try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
           }
         };
-        await Promise.race([loadPromise(),timeoutPromise]);
+        await loadPromise();
       }catch(e){
         console.error("Load inicial falhou:",e.message);
         try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
