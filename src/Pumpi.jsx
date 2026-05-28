@@ -559,152 +559,105 @@ function FriendsView({theme,user,sessions}){
   const [selectedFriend,setSelectedFriend]=useState(null);
   const [loadingFriends,setLoadingFriends]=useState(true);
 
-  useEffect(()=>{
-  if(user?.id) loadFriends();
-},[user?.id]);
+  useEffect(() => {
+    loadFriends();
+  }, [user?.id]);
 
-  const loadFriends = async () => {
-  if (!user?.id) return;
+const loadFriends = async () => {
+  const {
+    data: { user: authUser },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  const uid = authUser?.id || user?.id;
+
+  if (authError || !uid) {
+    console.error("Usuário não autenticado ao carregar amigos:", authError);
+    setLoadingFriends(false);
+    return;
+  }
 
   setLoadingFriends(true);
 
   try {
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 8000)
-    );
+    const { data: reqs, error: reqsError } = await supabase
+      .from("friendships")
+      .select("*")
+      .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`);
 
-    const fetchPromise = async () => {
+    if (reqsError) throw reqsError;
 
-      // =========================
-      // FRIENDSHIPS
-      // =========================
-      const {
-        data: reqs,
-        error: reqsError,
-      } = await supabase
-        .from("friendships")
-        .select("*")
-        .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+    const { data: allProfiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("*");
 
-      if (reqsError) throw reqsError;
+    if (profilesError) throw profilesError;
 
-      // =========================
-      // IDS DOS PERFIS ENVOLVIDOS
-      // =========================
-      const profileIds = [
-        ...new Set(
-          (reqs || []).flatMap((r) => [
-            r.requester_id,
-            r.receiver_id,
-          ])
-        ),
-      ].filter((id) => id && id !== user.id);
+    const profiles = allProfiles || [];
 
-      // =========================
-      // PERFIS DOS ENVOLVIDOS
-      // =========================
-      let involvedProfiles = [];
+    const getProfile = (id) =>
+      profiles.find((p) => p.id === id) || null;
 
-      if (profileIds.length > 0) {
-        const {
-          data: profilesData,
-          error: profilesError,
-        } = await supabase
-          .from("profiles")
-          .select("*")
-          .in("id", profileIds);
+    const accepted = (reqs || [])
+      .filter((r) => r.status === "accepted")
+      .map((r) => {
+        const otherId = r.requester_id === uid ? r.receiver_id : r.requester_id;
+        const profile = getProfile(otherId);
 
-        if (profilesError) throw profilesError;
+        return {
+          id: otherId,
+          username: profile?.username || "sem_username",
+          email: profile?.email,
+          friendshipId: r.id,
+        };
+      });
 
-        involvedProfiles = profilesData || [];
-      }
+    const pend = (reqs || [])
+      .filter((r) => r.status === "pending" && r.receiver_id === uid)
+      .map((r) => ({
+        ...r,
+        requesterUsername: getProfile(r.requester_id)?.username || "sem_username",
+      }));
 
-      // =========================
-      // TODOS PERFIS (SUGESTÕES)
-      // =========================
-      const {
-        data: allProfiles,
-        error: allProfilesError,
-      } = await supabase
-        .from("profiles")
-        .select("*")
-        .neq("id", user.id)
-        .limit(50);
+    const sentReqs = (reqs || [])
+      .filter((r) => r.status === "pending" && r.requester_id === uid)
+      .map((r) => ({
+        ...r,
+        receiverUsername: getProfile(r.receiver_id)?.username || "sem_username",
+      }));
 
-      if (allProfilesError) throw allProfilesError;
+    const usedIds = [
+      uid,
+      ...(reqs || []).map((r) =>
+        r.requester_id === uid ? r.receiver_id : r.requester_id
+      ),
+    ];
 
-      const getProfile = (id) =>
-  involvedProfiles.find((p) => p.id === id) || null;
+    setFriends(accepted);
+    setPending(pend);
+    setSent(sentReqs);
+    setSuggestions(profiles.filter((p) => !usedIds.includes(p.id)));
 
-if (reqs && reqs.length > 0) {
-  const accepted = reqs
-    .filter((r) => r.status === "accepted")
-    .map((r) => {
-      const isMe = r.requester_id === user.id;
-      const otherId = isMe ? r.receiver_id : r.requester_id;
+    const { data: bts, error: battlesError } = await supabase
+      .from("battles")
+      .select("*")
+      .or(`challenger_id.eq.${uid},opponent_id.eq.${uid}`)
+      .eq("status", "active");
 
-      return {
-        id: otherId,
-        username: getProfile(otherId)?.username,
-        friendshipId: r.id,
-      };
-    });
+    if (battlesError) throw battlesError;
 
-  const pend = reqs
-    .filter((r) => r.status === "pending" && r.receiver_id === user.id)
-    .map((r) => ({
-      ...r,
-      requesterUsername: getProfile(r.requester_id)?.username,
-    }));
-
-  const sentReqs = reqs
-    .filter((r) => r.status === "pending" && r.requester_id === user.id)
-    .map((r) => ({
-      ...r,
-      receiverUsername: getProfile(r.receiver_id)?.username,
-    }));
-
-  setFriends(accepted);
-  setPending(pend);
-  setSent(sentReqs);
-
-  const usedIds = [
-    user.id,
-    ...reqs.map((r) =>
-      r.requester_id === user.id ? r.receiver_id : r.requester_id
-    ),
-  ];
-
-  setSuggestions((allProfiles || []).filter((p) => !usedIds.includes(p.id)));
-} else {
-  setFriends([]);
-  setPending([]);
-  setSent([]);
-  setSuggestions(allProfiles || []);
-}
-
-const { data: bts, error: battlesError } = await supabase
-  .from("battles")
-  .select("*")
-  .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
-  .eq("status", "active");
-      
-      if (battlesError) throw battlesError;
-      if (bts) setBattles(bts);
-  };
-
-    await Promise.race([fetchPromise(), timeoutPromise]);
+    setBattles(bts || []);
   } catch (e) {
     console.error("loadFriends falhou:", e);
   } finally {
     setLoadingFriends(false);
   }
-}; 
-      
+};
+  
       const searchUser=async()=>{
     setSearching(true); setSearchResult(null);
     try{
-      const{data}=await supabase.from("profiles").select("*").eq("email",searchEmail).neq("id",user.id).single();
+      const{data}=await supabase.from("profiles").select("*").eq("email",searchEmail).neq("id",uid).single();
       setSearchResult(data||"not_found");
     }catch{ setSearchResult("not_found"); }
     setSearching(false);
