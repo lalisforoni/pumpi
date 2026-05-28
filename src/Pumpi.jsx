@@ -588,7 +588,7 @@ function FriendsView({theme,user,sessions}){
     setLoadingFriends(true);
 
     const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout_friends")), 8000)
+      setTimeout(() => reject(new Error("timeout_friends")), 20000)
     );
 
     const task = async () => {
@@ -704,9 +704,6 @@ function FriendsView({theme,user,sessions}){
     } catch (e) {
       console.error("loadFriends falhou:", e);
       if (alive) {
-        setFriends([]);
-        setPending([]);
-        setSent([]);
         setBattles([]);
         setSuggestions([]);
       }
