@@ -562,33 +562,183 @@ function FriendsView({theme,user,sessions}){
   if(user?.id) loadFriends();
 },[user?.id]);
 
-  const loadFriends=async()=>{
-    if(!user?.id) return;
-    setLoadingFriends(true);
-    try{
-      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
-      const fetchPromise=async()=>{
-        const{data:reqs,error:reqsError}=await supabase
-          .from("friendships")
+  const loadFriends = async () => {
+  if (!user?.id) return;
+
+  setLoadingFriends(true);
+
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 8000)
+    );
+
+    const fetchPromise = async () => {
+
+      // =========================
+      // FRIENDSHIPS
+      // =========================
+      const {
+        data: reqs,
+        error: reqsError,
+      } = await supabase
+        .from("friendships")
+        .select("*")
+        .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+      if (reqsError) throw reqsError;
+
+      // =========================
+      // IDS DOS PERFIS ENVOLVIDOS
+      // =========================
+      const profileIds = [
+        ...new Set(
+          (reqs || []).flatMap((r) => [
+            r.requester_id,
+            r.receiver_id,
+          ])
+        ),
+      ].filter((id) => id && id !== user.id);
+
+      // =========================
+      // PERFIS DOS ENVOLVIDOS
+      // =========================
+      let involvedProfiles = [];
+
+      if (profileIds.length > 0) {
+        const {
+          data: profilesData,
+          error: profilesError,
+        } = await supabase
+          .from("profiles")
           .select("*")
-          .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
-        if(reqsError) throw reqsError;
-        const profileIds = [
-  ...new Set(
-    (reqs || []).flatMap((r) => [r.requester_id, r.receiver_id])
-  ),
-].filter((id) => id !== user.id);
+          .in("id", profileIds);
 
-const { data: involvedProfiles } = await supabase
-  .from("profiles")
-  .select("*")
-  .in("id", profileIds);
+        if (profilesError) throw profilesError;
 
-const { data: allProfiles } = await supabase
-  .from("profiles")
-  .select("*")
-  .neq("id", user.id)
-  .limit(50);
+        involvedProfiles = profilesData || [];
+      }
+
+      // =========================
+      // TODOS PERFIS (SUGESTÕES)
+      // =========================
+      const {
+        data: allProfiles,
+        error: allProfilesError,
+      } = await supabase
+        .from("profiles")
+        .select("*")
+        .neq("id", user.id)
+        .limit(50);
+
+      if (allProfilesError) throw allProfilesError;
+
+      // =========================
+      // HELPER
+      // =========================
+      const getProfile = (id) =>
+        involvedProfiles.find((p) => p.id === id) || null;
+
+      // =========================
+      // ORGANIZAÇÃO DOS DADOS
+      // =========================
+      if (reqs && reqs.length > 0) {
+
+        const accepted = reqs
+          .filter((r) => r.status === "accepted")
+          .map((r) => {
+            const isMe = r.requester_id === user.id;
+
+            const otherId = isMe
+              ? r.receiver_id
+              : r.requester_id;
+
+            return {
+              id: otherId,
+              username: getProfile(otherId)?.username,
+              friendshipId: r.id,
+            };
+          });
+
+        const pend = reqs
+          .filter(
+            (r) =>
+              r.status === "pending" &&
+              r.receiver_id === user.id
+          )
+          .map((r) => ({
+            ...r,
+            requesterUsername:
+              getProfile(r.requester_id)?.username,
+          }));
+
+        const sentReqs = reqs
+          .filter(
+            (r) =>
+              r.status === "pending" &&
+              r.requester_id === user.id
+          )
+          .map((r) => ({
+            ...r,
+            receiverUsername:
+              getProfile(r.receiver_id)?.username,
+          }));
+
+        setFriends(accepted);
+        setPending(pend);
+        setSent(sentReqs);
+
+        const usedIds = [
+          user.id,
+          ...reqs.map((r) =>
+            r.requester_id === user.id
+              ? r.receiver_id
+              : r.requester_id
+          ),
+        ];
+
+        setSuggestions(
+          (allProfiles || []).filter(
+            (p) => !usedIds.includes(p.id)
+          )
+        );
+
+      } else {
+
+        setFriends([]);
+        setPending([]);
+        setSent([]);
+
+        setSuggestions(allProfiles || []);
+      }
+
+      // =========================
+      // BATTLES
+      // =========================
+      const { data: bts, error: battlesError } =
+        await supabase
+          .from("battles")
+          .select("*")
+          .or(
+            `challenger_id.eq.${user.id},opponent_id.eq.${user.id}`
+          )
+          .eq("status", "active");
+
+      if (battlesError) throw battlesError;
+
+      if (bts) setBattles(bts);
+    };
+
+    await Promise.race([
+      fetchPromise(),
+      timeoutPromise,
+    ]);
+
+  } catch (e) {
+    console.error("loadFriends falhou:", e);
+  } finally {
+    setLoadingFriends(false);
+  }
+};
 
 const getProfile = (id) => involvedProfiles?.find((p) => p.id === id);
         if(reqs&&reqs.length>0){
@@ -603,7 +753,9 @@ const getProfile = (id) => involvedProfiles?.find((p) => p.id === id);
           const sentReqs=reqs.filter(r=>r.status==="pending"&&r.requester_id===user.id).map(r=>({
             ...r,receiverUsername:getProfile(r.receiver_id)?.username
           }));
-          setFriends(accepted); setPending(pend); setSent(sentReqs);
+          setFriends(accepted.filter((f) => f.username));
+          setPending(pend);
+          setSent(sentReqs);
           const usedIds=[user.id,...reqs.map(r=>r.requester_id===user.id?r.receiver_id:r.requester_id)];
           setSuggestions((allProfiles||[]).filter(p=>!usedIds.includes(p.id)));
         } else {
