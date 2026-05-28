@@ -559,130 +559,242 @@ function FriendsView({theme,user,sessions}){
   const [selectedFriend,setSelectedFriend]=useState(null);
   const [loadingFriends,setLoadingFriends]=useState(true);
 
-  useEffect(() => {
-    loadFriends();
-  }, [user?.id]);
+  const getCurrentUid = async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) console.error("Erro ao buscar usuario autenticado:", error);
+    return data?.user?.id || user?.id || null;
+  };
 
-const loadFriends = async () => {
-  const {
-    data: { user: authUser },
-    error: authError,
-  } = await supabase.auth.getUser();
+  useEffect(()=>{
+    let alive = true;
 
-  const uid = authUser?.id || user?.id;
+    const run = async () => {
+      if (!user?.id) {
+        setLoadingFriends(false);
+        return;
+      }
 
-  if (authError || !uid) {
-    console.error("Usuário não autenticado ao carregar amigos:", authError);
-    setLoadingFriends(false);
-    return;
-  }
+      await loadFriends(alive);
+    };
 
-  setLoadingFriends(true);
+    run();
 
-  try {
-    const { data: reqs, error: reqsError } = await supabase
-      .from("friendships")
-      .select("*")
-      .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`);
+    return () => {
+      alive = false;
+    };
+  },[user?.id]);
 
-    if (reqsError) throw reqsError;
+  const loadFriends = async (alive = true) => {
+    setLoadingFriends(true);
 
-    const { data: allProfiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("*");
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("timeout_friends")), 8000)
+    );
 
-    if (profilesError) throw profilesError;
+    const task = async () => {
+      const uid = await getCurrentUid();
 
-    const profiles = allProfiles || [];
+      if (!uid) {
+        setFriends([]);
+        setPending([]);
+        setSent([]);
+        setBattles([]);
+        setSuggestions([]);
+        return;
+      }
 
-    const getProfile = (id) =>
-      profiles.find((p) => p.id === id) || null;
+      const { data: reqs, error: reqsError } = await supabase
+        .from("friendships")
+        .select("*")
+        .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`);
 
-    const accepted = (reqs || [])
-      .filter((r) => r.status === "accepted")
-      .map((r) => {
-        const otherId = r.requester_id === uid ? r.receiver_id : r.requester_id;
-        const profile = getProfile(otherId);
+      if (reqsError) throw reqsError;
 
-        return {
-          id: otherId,
-          username: profile?.username || "sem_username",
-          email: profile?.email,
-          friendshipId: r.id,
-        };
-      });
+      const profileIds = [
+        ...new Set(
+          (reqs || []).flatMap((r) => [r.requester_id, r.receiver_id])
+        ),
+      ].filter((id) => id && id !== uid);
 
-    const pend = (reqs || [])
-      .filter((r) => r.status === "pending" && r.receiver_id === uid)
-      .map((r) => ({
-        ...r,
-        requesterUsername: getProfile(r.requester_id)?.username || "sem_username",
-      }));
+      let involvedProfiles = [];
 
-    const sentReqs = (reqs || [])
-      .filter((r) => r.status === "pending" && r.requester_id === uid)
-      .map((r) => ({
-        ...r,
-        receiverUsername: getProfile(r.receiver_id)?.username || "sem_username",
-      }));
+      if (profileIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id,username,email")
+          .in("id", profileIds);
 
-    const usedIds = [
-      uid,
-      ...(reqs || []).map((r) =>
-        r.requester_id === uid ? r.receiver_id : r.requester_id
-      ),
-    ];
+        if (profilesError) throw profilesError;
+        involvedProfiles = profilesData || [];
+      }
 
-    setFriends(accepted);
-    setPending(pend);
-    setSent(sentReqs);
-    setSuggestions(profiles.filter((p) => !usedIds.includes(p.id)));
+      const { data: allProfiles, error: allProfilesError } = await supabase
+        .from("profiles")
+        .select("id,username,email")
+        .neq("id", uid)
+        .limit(50);
 
-    const { data: bts, error: battlesError } = await supabase
-      .from("battles")
-      .select("*")
-      .or(`challenger_id.eq.${uid},opponent_id.eq.${uid}`)
-      .eq("status", "active");
+      if (allProfilesError) throw allProfilesError;
 
-    if (battlesError) throw battlesError;
+      const getProfile = (id) =>
+        involvedProfiles.find((p) => p.id === id) ||
+        (allProfiles || []).find((p) => p.id === id) ||
+        null;
 
-    setBattles(bts || []);
-  } catch (e) {
-    console.error("loadFriends falhou:", e);
-  } finally {
-    setLoadingFriends(false);
-  }
-};
-  
-      const searchUser=async()=>{
-    setSearching(true); setSearchResult(null);
+      const accepted = (reqs || [])
+        .filter((r) => r.status === "accepted")
+        .map((r) => {
+          const otherId = r.requester_id === uid ? r.receiver_id : r.requester_id;
+          const profile = getProfile(otherId);
+
+          return {
+            id: otherId,
+            username: profile?.username || profile?.email || "sem_username",
+            email: profile?.email,
+            friendshipId: r.id,
+          };
+        });
+
+      const pend = (reqs || [])
+        .filter((r) => r.status === "pending" && r.receiver_id === uid)
+        .map((r) => ({
+          ...r,
+          requesterUsername:
+            getProfile(r.requester_id)?.username ||
+            getProfile(r.requester_id)?.email ||
+            "sem_username",
+        }));
+
+      const sentReqs = (reqs || [])
+        .filter((r) => r.status === "pending" && r.requester_id === uid)
+        .map((r) => ({
+          ...r,
+          receiverUsername:
+            getProfile(r.receiver_id)?.username ||
+            getProfile(r.receiver_id)?.email ||
+            "sem_username",
+        }));
+
+      const usedIds = [
+        uid,
+        ...(reqs || []).map((r) =>
+          r.requester_id === uid ? r.receiver_id : r.requester_id
+        ),
+      ];
+
+      const { data: bts, error: battlesError } = await supabase
+        .from("battles")
+        .select("*")
+        .or(`challenger_id.eq.${uid},opponent_id.eq.${uid}`)
+        .eq("status", "active");
+
+      if (battlesError) throw battlesError;
+
+      if (!alive) return;
+
+      setFriends(accepted);
+      setPending(pend);
+      setSent(sentReqs);
+      setSuggestions((allProfiles || []).filter((p) => !usedIds.includes(p.id)));
+      setBattles(bts || []);
+    };
+
+    try {
+      await Promise.race([task(), timeout]);
+    } catch (e) {
+      console.error("loadFriends falhou:", e);
+      if (alive) {
+        setFriends([]);
+        setPending([]);
+        setSent([]);
+        setBattles([]);
+        setSuggestions([]);
+      }
+    } finally {
+      if (alive) setLoadingFriends(false);
+    }
+  };
+
+  const searchUser=async()=>{
+    setSearching(true);
+    setSearchResult(null);
+
     try{
-      const{data}=await supabase.from("profiles").select("*").eq("email",searchEmail).neq("id",uid).single();
-      setSearchResult(data||"not_found");
-    }catch{ setSearchResult("not_found"); }
-    setSearching(false);
+      const uid = await getCurrentUid();
+
+      if (!uid) {
+        setSearchResult("not_found");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,username,email")
+        .eq("email", searchEmail.trim().toLowerCase())
+        .neq("id", uid)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      setSearchResult(data || "not_found");
+    }catch(e){
+      console.error("searchUser falhou:", e);
+      setSearchResult("not_found");
+    } finally {
+      setSearching(false);
+    }
   };
 
   const sendRequest=async(receiverId)=>{
     try{
-      await supabase.from("friendships").insert({requester_id:user.id,receiver_id:receiverId,status:"pending"});
-      setSearchEmail(""); setSearchResult(null);
+      const uid = await getCurrentUid();
+      if (!uid) throw new Error("Usuario nao autenticado");
+
+      const { error } = await supabase
+        .from("friendships")
+        .insert({requester_id:uid,receiver_id:receiverId,status:"pending"});
+
+      if (error) throw error;
+
+      setSearchEmail("");
+      setSearchResult(null);
       await loadFriends();
     }catch(e){ alert("Erro ao enviar pedido: "+e.message); }
   };
 
   const acceptRequest=async(friendshipId)=>{
     try{
-      await supabase.from("friendships").update({status:"accepted"}).eq("id",friendshipId);
+      const { error } = await supabase
+        .from("friendships")
+        .update({status:"accepted"})
+        .eq("id",friendshipId);
+
+      if (error) throw error;
+
       await loadFriends();
     }catch(e){ alert("Erro ao aceitar: "+e.message); }
   };
 
   const createBattle=async(opponentId,type)=>{
-    const ends=new Date(); ends.setDate(ends.getDate()+7);
-    await supabase.from("battles").insert({challenger_id:user.id,opponent_id:opponentId,type,status:"active",ends_at:ends.toISOString()});
-    setSelectedFriend(null); loadFriends();
-    alert("Batalha criada! Que vença a melhor 🔥");
+    try {
+      const uid = await getCurrentUid();
+      if (!uid) throw new Error("Usuario nao autenticado");
+
+      const ends=new Date();
+      ends.setDate(ends.getDate()+7);
+
+      const { error } = await supabase
+        .from("battles")
+        .insert({challenger_id:uid,opponent_id:opponentId,type,status:"active",ends_at:ends.toISOString()});
+
+      if (error) throw error;
+
+      setSelectedFriend(null);
+      await loadFriends();
+      alert("Batalha criada! Que vença a melhor 🔥");
+    } catch(e) {
+      alert("Erro ao criar batalha: " + e.message);
+    }
   };
 
   const myStreak=()=>{
@@ -741,6 +853,7 @@ const loadFriends = async () => {
         ))}
         <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
       </>)}
+
       {sent.length>0&&(<>
         <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS ENVIADOS</p>
         {sent.map(p=>(
@@ -756,6 +869,7 @@ const loadFriends = async () => {
         ))}
         <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
       </>)}
+
       {friends.length===0&&sent.length===0&&pending.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}>
           <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
@@ -783,6 +897,7 @@ const loadFriends = async () => {
           {searching?"...":"Buscar"}
         </button>
       </div>
+
       {searchResult&&searchResult!=="not_found"&&(
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -794,7 +909,9 @@ const loadFriends = async () => {
           </div>
         </Card>
       )}
+
       {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:"16px"}}>Usuário não encontrado 😕</p>}
+
       {suggestions.length>0&&!searchResult&&(<>
         <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"8px 0",letterSpacing:"1.5px"}}>USUÁRIOS NO PUMPI</p>
         {suggestions.map(s=>(
@@ -823,6 +940,7 @@ const loadFriends = async () => {
           <div><p style={{color:T.green,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{sessions.filter(s=>s.status==="done").length}💪</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>treinos</p></div>
         </div>
       </Card>
+
       {battles.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px"}}>
           <p style={{fontSize:"40px",marginBottom:"12px"}}>⚔️</p>
@@ -854,6 +972,7 @@ const loadFriends = async () => {
     )}
   </div>);
 }
+
 function HistoryModal({machine,history,theme,onClose}){
   const sorted=[...history].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const max=history.reduce((m,h)=>Math.max(m,parseFloat(h.weight)||0),0);
@@ -1025,13 +1144,15 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
           </div>
           <div style={{display:"flex",gap:"6px"}}>
             {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
-            {session.status==="active"&&<button onClick={onFinish} style={{background:theme.green,border:"none",borderRadius:"12px",color:"#fff",fontWeight:800,fontSize:"14px",padding:"12px 18px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.green}40`}}>✓ Finalizar</button>}
             {session.status==="done"&&session.manual&&(
               editMode
                 ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
                 :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
             )}
-            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({...session,status:"active",finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
+            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({
+             ...session,
+             status:"active",
+             finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
           </div>
         </div>
       </div>
@@ -1447,18 +1568,22 @@ const visibleLocalSessions = localSessions.filter(
 };
 
   const updateSession = async (updated) => {
+  const existing = data.sessions.find((s) => s.id === updated.id);
+
+  const merged = mergeSessionPair(existing, updated);
+
   const nd = {
     ...data,
     sessions: data.sessions.map((s) =>
-      s.id === updated.id ? updated : s
+      s.id === merged.id ? merged : s
     ),
   };
 
   await save(nd);
 
-  setActiveSession(updated.id);
+  setActiveSession(merged.id);
 
-  setTimeout(() => saveSession(updated), 800);
+  saveSession(merged);
 };
 
   const finishSession = async () => {
@@ -1472,10 +1597,12 @@ const visibleLocalSessions = localSessions.filter(
     finishedAt: Date.now(),
   };
 
+  const merged = mergeSessionPair(s, updated);
+
   const nd = {
     ...data,
     sessions: data.sessions.map((item) =>
-      item.id === activeSession ? updated : item
+      item.id === activeSession ? merged : item
     ),
   };
 
@@ -1483,8 +1610,9 @@ const visibleLocalSessions = localSessions.filter(
 
   setCelebration(true);
 
-  saveSession(updated);
+  saveSession(merged);
 };
+
 
   const deleteSession = async (id) => {
   addDeletedSessionId(id);
