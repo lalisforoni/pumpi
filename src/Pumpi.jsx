@@ -321,11 +321,30 @@ async function saveOnce(session, uid) {
     },
   };
 
-  const { data, error, status, statusText } = await supabase
+  const timeout = new Promise((_, reject) =>
+  setTimeout(() => reject(new Error("timeout_save")), 8000)
+);
+
+const result = await Promise.race([
+  supabase
     .from("sessions")
     .upsert(payload, { onConflict: "id" })
     .select("id,user_id")
-    .single();
+    .single(),
+  timeout,
+]);
+
+const { data, error } = result;
+
+if (error) {
+  logSupabaseError("UPSERT falhou", error, {
+    payload,
+  });
+  throw error;
+}
+
+console.info("Save UPSERT OK:", data);
+return true;
 
   if (error) {
     logSupabaseError("UPSERT falhou", error, {
@@ -1625,43 +1644,59 @@ export default function Pumpi(){
     return()=>clearInterval(id);
   },[user,tab]);
 
-  useEffect(()=>{
-    if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => {
-    regs.forEach((reg) => reg.unregister());
-  });
-}
+  useEffect(() => {
+  let alive = true;
 
-if ("caches" in window) {
-  caches.keys().then((keys) => {
-    keys.forEach((key) => caches.delete(key));
-  });
-}
-    (async()=>{
-      try{
-          const loadPromise=async()=>{
-          const{data:{session}}=await supabase.auth.getSession();
-          if(session?.user){
-            setUser(session.user);
-            await loadData(session.user.id);
-          } else {
-            try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
-          }
-        };
-        await loadPromise();
-      }catch(e){
-        console.error("Load inicial falhou:",e.message);
-        try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}
-      }finally{
-        setLoaded(true);
+  const loadInitialData = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!alive) return;
+
+      if (session?.user) {
+        setUser(session.user);
+        await loadData(session.user.id);
+      } else {
+        const s = localStorage.getItem(STORAGE_KEY);
+        if (s) setData(JSON.parse(s));
       }
-    })();
-    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
-      if(event==="SIGNED_IN"&&session?.user){setUser(session.user);await loadData(session.user.id);}
-      else if(event==="SIGNED_OUT"){setUser(null);setProfile(null);setData({sessions:[]});setPendingCount(0);}
-    });
-    return()=>subscription.unsubscribe();
-  },[]);
+    } catch (e) {
+      console.error("Load inicial falhou:", e?.message || e);
+
+      try {
+        const s = localStorage.getItem(STORAGE_KEY);
+        if (s) setData(JSON.parse(s));
+      } catch {}
+    } finally {
+      if (alive) setLoaded(true);
+    }
+  };
+
+  loadInitialData();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === "SIGNED_IN" && session?.user) {
+      setUser(session.user);
+      await loadData(session.user.id);
+    }
+
+    if (event === "SIGNED_OUT") {
+      setUser(null);
+      setProfile(null);
+      setData({ sessions: [] });
+      setPendingCount(0);
+    }
+  });
+
+  return () => {
+    alive = false;
+    subscription.unsubscribe();
+  };
+}, []);
 
   const loadData = async (uid) => {
   try {
@@ -1824,10 +1859,7 @@ if ("caches" in window) {
 
   await save(nd);
 
-  setActiveSession(s.id);
-  setTab("session");
-
-  saveSession(s);
+setActiveSession(withTimestamp.id);
 };
 
   const updateSession = async (updated) => {
@@ -1847,7 +1879,23 @@ if ("caches" in window) {
 
   setActiveSession(withTimestamp.id);
 
-  saveSession(withTimestamp);
+  const updateSession = async (updated) => {
+  const withTimestamp = {
+    ...updated,
+    updatedAt: Date.now(),
+  };
+
+  const nd = {
+    ...data,
+    sessions: data.sessions.map((s) =>
+      String(s.id) === String(withTimestamp.id) ? withTimestamp : s
+    ),
+  };
+
+  await save(nd);
+
+  setActiveSession(withTimestamp.id);
+};
 };
 
   const finishSession = async () => {
