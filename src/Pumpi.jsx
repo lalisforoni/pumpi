@@ -1148,6 +1148,7 @@ function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
     </div>
   );
 }
+
 function MetricsView({sessions,theme}){
   const T=theme;
   const doneSessions=sessions.filter(s=>s.status==="done");
@@ -1255,6 +1256,56 @@ function MetricsView({sessions,theme}){
     {topMachines.length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🏆 Suas Favoritas</p>{topMachines.map(([name,count],i)=>{const p=getPersona(name);const pct=Math.round((count/topMachines[0][1])*100);return(<div key={name} style={{marginBottom:"10px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span>{i===0&&<span style={{background:`${T.accent}20`,color:T.accent,fontSize:"9px",padding:"1px 6px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>favorita</span>}</div><span style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>{count}x</span></div><Bar pct={pct} color={p.color} h={6}/></div>);})}</Card>)}
     {Object.keys(machinePRs).length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🥇 Meus PRs</p><div style={{display:"flex",flexDirection:"column",gap:"6px"}}>{Object.entries(machinePRs).sort((a,b)=>b[1]-a[1]).map(([name,kg])=>{const p=getPersona(name);return(<div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:`${p.color}10`,border:`1px solid ${p.color}25`,borderRadius:"10px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span></div><span style={{color:p.color,fontSize:"14px",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{kg}kg</span></div>);})}</div></Card>)}
   </div>);
+}
+
+function ProfileView({ profile, sessions, theme, onLogout }) {
+  const T = theme;
+
+  return (
+    <div>
+      <div
+        style={{
+          background: T.bgCard,
+          border: `1px solid ${T.bgCardBorder}`,
+          borderRadius: "16px",
+          padding: "20px",
+          marginBottom: "12px",
+        }}
+      >
+        <h2>@{profile?.username}</h2>
+        <p>{profile?.email}</p>
+      </div>
+
+      <div
+        style={{
+          background: T.bgCard,
+          border: `1px solid ${T.bgCardBorder}`,
+          borderRadius: "16px",
+          padding: "20px",
+          marginBottom: "12px",
+        }}
+      >
+        <p>🏋️ Treinos: {sessions.length}</p>
+        <p>
+          ✅ Finalizados:{" "}
+          {sessions.filter(s => s.status === "done").length}
+        </p>
+      </div>
+
+      <button
+        onClick={onLogout}
+        style={{
+          width: "100%",
+          padding: "14px",
+          borderRadius: "12px",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        Sair
+      </button>
+    </div>
+  );
 }
 
 export default function Pumpi(){
@@ -1801,12 +1852,13 @@ export default function Pumpi(){
   </>
 )}
         {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
+        {tab==="profile"&&(<div style={{paddingBottom:"100px"}}><ProfileView profile={profile} sessions={data.sessions} theme={T} onLogout={logout}/></div>)}
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
 
       {tab!=="session"&&(
         <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
-          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"}].map(n=>(
+          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"},{id:"profile",label:"Perfil",icon:"👤"}].map(n=>(
             <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
               <div style={{position:"relative",display:"inline-block"}}>
                 <span style={{fontSize:"20px"}}>{n.icon}</span>
