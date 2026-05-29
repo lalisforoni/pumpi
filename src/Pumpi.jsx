@@ -146,40 +146,23 @@ function mergeSessionPair(remoteSession, localSession) {
   if (!remoteSession) return localSession;
   if (!localSession) return remoteSession;
 
-  const mergeExs = (remExs = [], locExs = []) => {
-    const machines = new Set([
-      ...remExs.map((e) => e.machine),
-      ...locExs.map((e) => e.machine),
-    ]);
+  const remoteUpdated =
+    remoteSession.updatedAt ||
+    remoteSession.finishedAt ||
+    remoteSession.startedAt ||
+    remoteSession.id ||
+    0;
 
-    return [...machines].map((machine) => {
-      const remEx = remExs.find((e) => e.machine === machine);
-      const locEx = locExs.find((e) => e.machine === machine);
+  const localUpdated =
+    localSession.updatedAt ||
+    localSession.finishedAt ||
+    localSession.startedAt ||
+    localSession.id ||
+    0;
 
-      if (!remEx) return locEx;
-      if (!locEx) return remEx;
-
-      const remoteHistory = remEx.weightHistory || [];
-      const localHistory = locEx.weightHistory || [];
-
-      return {
-        ...remEx,
-        ...locEx,
-        weightHistory:
-          remoteHistory.length >= localHistory.length
-            ? remoteHistory
-            : localHistory,
-      };
-    });
-  };
-
-  return {
-    ...remoteSession,
-    ...localSession,
-    id: remoteSession.id ?? localSession.id,
-    lower: mergeExs(remoteSession.lower, localSession.lower),
-    upper: mergeExs(remoteSession.upper, localSession.upper),
-  };
+  return Number(remoteUpdated) >= Number(localUpdated)
+    ? remoteSession
+    : localSession;
 }
 
 function mergeSessions(remote = [], local = []) {
@@ -234,48 +217,22 @@ async function saveOnce(session, uid) {
     },
   };
 
-  const insertResult = await supabase
+  const { data, error, status, statusText } = await supabase
     .from("sessions")
-    .insert(payload)
+    .upsert(payload, { onConflict: "id" })
     .select("id,user_id")
     .single();
 
-  if (!insertResult.error) {
-    console.info("Save INSERT OK:", insertResult.data);
-    return true;
-  }
-
-  if (insertResult.error.code !== "23505") {
-    logSupabaseError("INSERT falhou", insertResult.error, {
-      status: insertResult.status,
-      statusText: insertResult.statusText,
+  if (error) {
+    logSupabaseError("UPSERT falhou", error, {
+      status,
+      statusText,
       payload,
     });
-
-    throw insertResult.error;
+    throw error;
   }
 
-  const updateResult = await supabase
-    .from("sessions")
-    .update({
-      data: payload.data,
-    })
-    .eq("id", normalizedId)
-    .eq("user_id", authUser.id)
-    .select("id,user_id")
-    .single();
-
-  if (updateResult.error) {
-    logSupabaseError("UPDATE falhou", updateResult.error, {
-      status: updateResult.status,
-      statusText: updateResult.statusText,
-      payload,
-    });
-
-    throw updateResult.error;
-  }
-
-  console.info("Save UPDATE OK:", updateResult.data);
+  console.info("Save UPSERT OK:", data);
   return true;
 }
 
@@ -296,19 +253,33 @@ async function saveWithRetry(session, uid, retries = 3) {
   return false;
 }
 
-async function deleteWithRetry(id, uid, retries=3){
-  for(let i=0; i<retries; i++){
-    try{
-      const deletePromise=supabase.from("sessions").delete().eq("id",id).eq("user_id",uid);
-      const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),5000));
-      const{error}=await Promise.race([deletePromise,timeoutPromise]);
-      if(!error) return true;
-      console.error(`Delete tentativa ${i+1} falhou:`,error.message);
-    }catch(e){
-      console.error(`Delete tentativa ${i+1} exception:`,e.message);
+async function deleteWithRetry(id, uid, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const deletePromise = supabase
+        .from("sessions")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", uid);
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout_delete")), 5000)
+      );
+
+      const { error } = await Promise.race([deletePromise, timeoutPromise]);
+
+      if (!error) return true;
+
+      console.error(`Delete tentativa ${i + 1} falhou:`, error.message);
+    } catch (e) {
+      console.error(`Delete tentativa ${i + 1} exception:`, e.message);
     }
-    if(i<retries-1) await new Promise(r=>setTimeout(r,1000*(i+1)));
+
+    if (i < retries - 1) {
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
   }
+
   return false;
 }
 
@@ -586,10 +557,6 @@ function FriendsView({theme,user,sessions}){
 
   const loadFriends = async (alive = true) => {
     setLoadingFriends(true);
-
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout_friends")), 20000)
-    );
 
     const task = async () => {
       const uid = await getCurrentUid();
@@ -1329,8 +1296,7 @@ export default function Pumpi(){
     }
     (async()=>{
       try{
-        const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),10000));
-        const loadPromise=async()=>{
+          const loadPromise=async()=>{
           const{data:{session}}=await supabase.auth.getSession();
           if(session?.user){
             setUser(session.user);
@@ -1368,9 +1334,10 @@ export default function Pumpi(){
     const localSessions = local ? JSON.parse(local).sessions || [] : [];
 
     const deletedIds = getDeletedSessionIds();
-const visibleLocalSessions = localSessions.filter(
-  (s) => !deletedIds.includes(String(s.id))
-);
+
+    const visibleLocalSessions = localSessions.filter(
+      (s) => !deletedIds.includes(String(s.id))
+    );
 
     const { data: rows, error: rowsError } = await supabase
       .from("sessions")
@@ -1380,38 +1347,25 @@ const visibleLocalSessions = localSessions.filter(
 
     if (rowsError) throw rowsError;
 
-    let nextSessions = [];
+    const remoteSessions = (rows || []).map((r) => ({
+      ...r.data,
+      id: r.id,
+      updatedAt: r.updated_at ? Date.parse(r.updated_at) : r.id,
+    }));
 
-    if (rows && rows.length > 0) {
-      const remoteSessions = rows.map((r) => ({
-        ...r.data,
-        id: r.id,
-      }));
+    const nextSessions = mergeSessions(
+      remoteSessions.filter((s) => !deletedIds.includes(String(s.id))),
+      visibleLocalSessions
+    );
 
-      nextSessions = mergeSessions(
-  remoteSessions.filter((s) => !deletedIds.includes(String(s.id))),
-  visibleLocalSessions
-);
-    } else {
-      nextSessions = sortSessions(visibleLocalSessions);
+    const sorted = sortSessions(nextSessions);
 
-      if (visibleLocalSessions.length > 0) {
-        for (const s of visibleLocalSessions) {
-          await saveWithRetry(s, uid);
-        }
-      }
-    }
+    setData({ sessions: sorted });
 
-    nextSessions = sortSessions(nextSessions);
-
-    setData({ sessions: nextSessions });
-
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ sessions: nextSessions })
-      );
-    } catch {}
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ sessions: sorted })
+    );
 
     const { data: pending } = await supabase
       .from("friendships")
@@ -1420,51 +1374,17 @@ const visibleLocalSessions = localSessions.filter(
       .eq("status", "pending");
 
     if (pending) setPendingCount(pending.length);
-
-    try {
-      const pendingSync = JSON.parse(
-        localStorage.getItem(PENDING_KEY) || "[]"
-      ).map(String);
-
-      if (pendingSync.length > 0) {
-        const stillPending = [];
-
-        for (const id of pendingSync) {
-          const s = nextSessions.find((session) => String(session.id) === id);
-
-          if (!s) continue;
-
-          const ok = await saveWithRetry(s, uid);
-
-          if (!ok) {
-            stillPending.push(id);
-          }
-        }
-
-        if (stillPending.length > 0) {
-          localStorage.setItem(PENDING_KEY, JSON.stringify(stillPending));
-        } else {
-          localStorage.removeItem(PENDING_KEY);
-        }
-      }
-    } catch (e) {
-      console.error("Falha ao processar fila pendente:", e);
-    }
   } catch (e) {
-    console.error("loadData falhou:", e.message);
+    console.error("loadData falhou:", e);
 
-    try {
-      const s = localStorage.getItem(STORAGE_KEY);
-
-      if (s) {
-        const parsed = JSON.parse(s);
-
-        setData({
-          ...parsed,
-          sessions: sortSessions(parsed.sessions || []),
-        });
-      }
-    } catch {}
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) {
+      const parsed = JSON.parse(s);
+      setData({
+        ...parsed,
+        sessions: sortSessions(parsed.sessions || []),
+      });
+    }
   }
 };
   
@@ -1565,26 +1485,27 @@ const visibleLocalSessions = localSessions.filter(
 };
 
   const updateSession = async (updated) => {
-  const existing = data.sessions.find((s) => s.id === updated.id);
-
-  const merged = mergeSessionPair(existing, updated);
+  const withTimestamp = {
+    ...updated,
+    updatedAt: Date.now(),
+  };
 
   const nd = {
     ...data,
     sessions: data.sessions.map((s) =>
-      s.id === merged.id ? merged : s
+      String(s.id) === String(withTimestamp.id) ? withTimestamp : s
     ),
   };
 
   await save(nd);
 
-  setActiveSession(merged.id);
+  setActiveSession(withTimestamp.id);
 
-  saveSession(merged);
+  saveSession(withTimestamp);
 };
 
   const finishSession = async () => {
-  const s = data.sessions.find((s) => s.id === activeSession);
+  const s = data.sessions.find((s) => String(s.id) === String(activeSession));
 
   if (!s) return;
 
@@ -1592,14 +1513,13 @@ const visibleLocalSessions = localSessions.filter(
     ...s,
     status: "done",
     finishedAt: Date.now(),
+    updatedAt: Date.now(),
   };
-
-  const merged = mergeSessionPair(s, updated);
 
   const nd = {
     ...data,
     sessions: data.sessions.map((item) =>
-      item.id === activeSession ? merged : item
+      String(item.id) === String(activeSession) ? updated : item
     ),
   };
 
@@ -1607,10 +1527,9 @@ const visibleLocalSessions = localSessions.filter(
 
   setCelebration(true);
 
-  saveSession(merged);
+  saveSession(updated);
 };
-
-
+  
   const deleteSession = async (id) => {
   addDeletedSessionId(id);
 
@@ -1658,20 +1577,25 @@ const visibleLocalSessions = localSessions.filter(
     try{localStorage.removeItem(STORAGE_KEY);}catch{}
   };
 
-  const handleRefresh=async()=>{
-    if(refreshing) return;
-    setRefreshing(true);
-    try{
-      const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error("timeout")),8000));
-      if(user) await Promise.race([loadData(user.id),timeout]);
-      else{try{const s=localStorage.getItem(STORAGE_KEY);if(s)setData(JSON.parse(s));}catch{}}
-    }catch(e){
-      console.error("Refresh falhou:",e.message);
-    }finally{
-      setRefreshing(false);
-    }
-  };
+  const handleRefresh = async () => {
+  if (refreshing) return;
 
+  setRefreshing(true);
+
+  try {
+    if (user?.id) {
+      await loadData(user.id);
+    } else {
+      const s = localStorage.getItem(STORAGE_KEY);
+      if (s) setData(JSON.parse(s));
+    }
+  } catch (e) {
+    console.error("Refresh falhou:", e);
+  } finally {
+    setRefreshing(false);
+  }
+};
+  
   const currentSession=data.sessions.find(s=>s.id===activeSession);
   const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
   const statusBadge=s=>{
