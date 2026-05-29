@@ -1976,9 +1976,16 @@ setActiveSession(withTimestamp.id);
 
   setRefreshing(true);
 
+  const timeout = new Promise((resolve) =>
+    setTimeout(() => resolve("timeout"), 8000)
+  );
+
   try {
     if (user?.id) {
-      await loadData(user.id);
+      await Promise.race([
+        loadData(user.id),
+        timeout,
+      ]);
     } else {
       const s = localStorage.getItem(STORAGE_KEY);
       if (s) setData(JSON.parse(s));
