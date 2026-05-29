@@ -1603,16 +1603,17 @@ export default function Pumpi(){
   },[user,tab]);
 
   useEffect(()=>{
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('/sw.js').then(reg=>{
-        reg.addEventListener('updatefound',()=>{
-          const nw=reg.installing;
-          nw.addEventListener('statechange',()=>{
-            if(nw.state==='installed'&&navigator.serviceWorker.controller) window.location.reload();
-          });
-        });
-      }).catch(()=>{});
-    }
+    if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => reg.unregister());
+  });
+}
+
+if ("caches" in window) {
+  caches.keys().then((keys) => {
+    keys.forEach((key) => caches.delete(key));
+  });
+}
     (async()=>{
       try{
           const loadPromise=async()=>{
