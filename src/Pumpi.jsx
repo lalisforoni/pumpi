@@ -1362,8 +1362,11 @@ function MetricsView({sessions,theme}){
   </div>);
 }
 
-function ProfileView({ profile, sessions, theme, onLogout }) {
+function ProfileView({ profile, sessions, theme, onLogout, user }) {
   const T = theme;
+  const [feedbackType, setFeedbackType] = useState("suggestion");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [sendingFeedback, setSendingFeedback] = useState(false);
 
   const downloadCSV = () => {
     const rows = [];
@@ -1384,15 +1387,27 @@ function ProfileView({ profile, sessions, theme, onLogout }) {
       });
     });
 
-    const header = Object.keys(rows[0] || {
-      date: "", status: "", group: "", machine: "", weight: "", series: "", reps: "", rp: "", manual: ""
-    });
+    const header = Object.keys(
+      rows[0] || {
+        date: "",
+        status: "",
+        group: "",
+        machine: "",
+        weight: "",
+        series: "",
+        reps: "",
+        rp: "",
+        manual: "",
+      }
+    );
 
     const csv = [
       header.join(","),
-      ...rows.map(row =>
-        header.map(h => `"${String(row[h] ?? "").replaceAll('"', '""')}"`).join(",")
-      )
+      ...rows.map((row) =>
+        header
+          .map((h) => `"${String(row[h] ?? "").replaceAll('"', '""')}"`)
+          .join(",")
+      ),
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -1420,6 +1435,34 @@ function ProfileView({ profile, sessions, theme, onLogout }) {
     else alert("Email para mudar senha enviado 🍑");
   };
 
+  const sendFeedback = async () => {
+    if (!feedbackText.trim()) {
+      alert("Escreva sua mensagem primeiro 🍑");
+      return;
+    }
+
+    setSendingFeedback(true);
+
+    const uid = user?.id || profile?.id;
+
+    const { error } = await supabase.from("suggestions").insert({
+      user_id: uid,
+      type: feedbackType,
+      message: feedbackText.trim(),
+    });
+
+    setSendingFeedback(false);
+
+    if (error) {
+      alert("Erro ao enviar: " + error.message);
+      return;
+    }
+
+    setFeedbackText("");
+    setFeedbackType("suggestion");
+    alert("Mensagem enviada! Obrigada pela sugestão 🍑");
+  };
+
   return (
     <div>
       <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
@@ -1430,6 +1473,60 @@ function ProfileView({ profile, sessions, theme, onLogout }) {
       <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
         <p style={{ color: T.text }}>🏋️ Treinos: {sessions.length}</p>
         <p style={{ color: T.text }}>✅ Finalizados: {sessions.filter(s => s.status === "done").length}</p>
+      </div>
+
+      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
+        <p style={{ color: T.text, fontWeight: 800, marginBottom: "10px" }}>💬 Suporte e sugestões</p>
+
+        <select
+          value={feedbackType}
+          onChange={(e) => setFeedbackType(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "12px",
+            borderRadius: "12px",
+            border: `1px solid ${T.inputBorder}`,
+            background: T.inputBg,
+            color: T.text,
+            marginBottom: "10px",
+          }}
+        >
+          <option value="suggestion">Sugestão</option>
+          <option value="support">Suporte / problema</option>
+        </select>
+
+        <textarea
+          value={feedbackText}
+          onChange={(e) => setFeedbackText(e.target.value)}
+          placeholder="Escreva aqui..."
+          rows={4}
+          style={{
+            width: "100%",
+            padding: "12px",
+            borderRadius: "12px",
+            border: `1px solid ${T.inputBorder}`,
+            background: T.inputBg,
+            color: T.text,
+            resize: "none",
+            marginBottom: "10px",
+          }}
+        />
+
+        <button
+          onClick={sendFeedback}
+          disabled={sendingFeedback}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: "12px",
+            border: "none",
+            background: T.accent,
+            color: T.accentText,
+            fontWeight: 800,
+          }}
+        >
+          {sendingFeedback ? "Enviando..." : "Enviar mensagem 🍑"}
+        </button>
       </div>
 
       <button onClick={downloadCSV} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: "none", background: T.accent, color: T.accentText, fontWeight: 800, marginBottom: "10px" }}>
@@ -1991,7 +2088,7 @@ export default function Pumpi(){
   </>
 )}
         {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
-        {tab==="profile"&&(<div style={{paddingBottom:"100px"}}><ProfileView profile={profile} sessions={data.sessions} theme={T} onLogout={logout}/></div>)}
+        {tab==="profile"&&(<div style={{paddingBottom:"100px"}}><ProfileView profile={profile} sessions={data.sessions} theme={T} onLogout={logout} user={user}/></div>)}
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
 
