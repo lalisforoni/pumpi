@@ -1362,40 +1362,8 @@ function MetricsView({sessions,theme}){
   </div>);
 }
 
-function ProfileView({ profile, sessions, theme, onLogout, user }) {
+function ProfileView({ profile, sessions, theme, onLogout, user, syncStatus }) {
   const T = theme;
-  const syncBadge = () => {
-  if (syncStatus === "saving") {
-    return {
-      icon: "🍑",
-      label: "Salvando...",
-      bg: "rgba(245, 158, 11, 0.14)",
-      color: "#f59e0b",
-    };
-  }
-
-  if (syncStatus === "saved") {
-    return {
-      icon: "🟢",
-      label: "Sincronizado",
-      bg: "rgba(46, 125, 82, 0.14)",
-      color: T.green,
-    };
-  }
-
-  if (syncStatus === "error") {
-    return {
-      icon: "🔴",
-      label: "Offline",
-      bg: "rgba(255, 80, 80, 0.14)",
-      color: T.danger,
-    };
-  }
-
-  return null;
-};
-
-  const sync = syncBadge();
   const [feedbackType, setFeedbackType] = useState("suggestion");
   const [feedbackText, setFeedbackText] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
@@ -1503,12 +1471,40 @@ function ProfileView({ profile, sessions, theme, onLogout, user }) {
       </div>
 
       <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <p style={{ color: T.text }}>🏋️ Treinos: {sessions.length}</p>
-        <p style={{ color: T.text }}>✅ Finalizados: {sessions.filter(s => s.status === "done").length}</p>
+        <p style={{ color: T.text, fontWeight: 800, marginBottom: "8px" }}>
+          ☁️ Sincronização
+        </p>
+
+        <p
+          style={{
+            color:
+              syncStatus === "saved"
+                ? T.green
+                : syncStatus === "error"
+                ? T.danger
+                : T.accent,
+            fontWeight: 700,
+            margin: 0,
+          }}
+        >
+          {syncStatus === "saving" && "🍑 Salvando..."}
+          {syncStatus === "saved" && "🟢 Tudo sincronizado"}
+          {syncStatus === "error" && "🔴 Offline / erro ao sincronizar"}
+          {!syncStatus && "🟢 Tudo sincronizado"}
+        </p>
       </div>
 
       <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <p style={{ color: T.text, fontWeight: 800, marginBottom: "10px" }}>💬 Suporte e sugestões</p>
+        <p style={{ color: T.text }}>🏋️ Treinos: {sessions.length}</p>
+        <p style={{ color: T.text }}>
+          ✅ Finalizados: {sessions.filter((s) => s.status === "done").length}
+        </p>
+      </div>
+
+      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
+        <p style={{ color: T.text, fontWeight: 800, marginBottom: "10px" }}>
+          💬 Suporte e sugestões
+        </p>
 
         <select
           value={feedbackType}
@@ -1588,7 +1584,10 @@ export default function Pumpi(){
   const [showManual,setShowManual]=useState(false);
   const [pendingCount,setPendingCount]=useState(0);
   const [refreshing,setRefreshing]=useState(false);
+  
   const [syncStatus,setSyncStatus]=useState(null);
+  const [lastSync,setLastSync]=useState(null);
+  
   const touchStartY=useRef(0);
   const T=theme;
 
@@ -1717,7 +1716,9 @@ if ("caches" in window) {
 
   if (ok) {
     setSyncStatus("saved");
+    setLastSync(new Date());
     setTimeout(() => setSyncStatus(null), 3000);
+    
 
     try {
       const id = String(session.id);
@@ -1750,6 +1751,7 @@ if ("caches" in window) {
 
     if (ok2) {
       setSyncStatus("saved");
+      setLastSync(new Date());
       setTimeout(() => setSyncStatus(null), 3000);
 
       try {
@@ -2141,7 +2143,18 @@ if ("caches" in window) {
   </>
 )}
         {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
-        {tab==="profile"&&(<div style={{paddingBottom:"100px"}}><ProfileView profile={profile} sessions={data.sessions} theme={T} onLogout={logout} user={user}/></div>)}
+        {tab==="profile"&&(
+  <div style={{paddingBottom:"100px"}}>
+    <ProfileView
+      profile={profile}
+      sessions={data.sessions}
+      theme={T}
+      onLogout={logout}
+      user={user}
+      syncStatus={syncStatus}
+    />
+  </div>
+)}
         {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
       </div>
 
