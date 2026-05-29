@@ -322,36 +322,22 @@ async function saveOnce(session, uid) {
   };
 
   const timeout = new Promise((_, reject) =>
-  setTimeout(() => reject(new Error("timeout_save")), 8000)
-);
+    setTimeout(() => reject(new Error("timeout_save")), 8000)
+  );
 
-const result = await Promise.race([
-  supabase
-    .from("sessions")
-    .upsert(payload, { onConflict: "id" })
-    .select("id,user_id")
-    .single(),
-  timeout,
-]);
+  const result = await Promise.race([
+    supabase
+      .from("sessions")
+      .upsert(payload, { onConflict: "id" })
+      .select("id,user_id")
+      .single(),
+    timeout,
+  ]);
 
-const { data, error } = result;
-
-if (error) {
-  logSupabaseError("UPSERT falhou", error, {
-    payload,
-  });
-  throw error;
-}
-
-console.info("Save UPSERT OK:", data);
-return true;
+  const { data, error } = result;
 
   if (error) {
-    logSupabaseError("UPSERT falhou", error, {
-      status,
-      statusText,
-      payload,
-    });
+    logSupabaseError("UPSERT falhou", error, { payload });
     throw error;
   }
 
@@ -1859,27 +1845,11 @@ export default function Pumpi(){
 
   await save(nd);
 
-setActiveSession(withTimestamp.id);
+  setActiveSession(s.id);
+  setTab("session");
 };
 
-  const updateSession = async (updated) => {
-  const withTimestamp = {
-    ...updated,
-    updatedAt: Date.now(),
-  };
-
-  const nd = {
-    ...data,
-    sessions: data.sessions.map((s) =>
-      String(s.id) === String(withTimestamp.id) ? withTimestamp : s
-    ),
-  };
-
-  await save(nd);
-
-  setActiveSession(withTimestamp.id);
-
-  const updateSession = async (updated) => {
+const updateSession = async (updated) => {
   const withTimestamp = {
     ...updated,
     updatedAt: Date.now(),
@@ -1896,8 +1866,7 @@ setActiveSession(withTimestamp.id);
 
   setActiveSession(withTimestamp.id);
 };
-};
-
+  
   const finishSession = async () => {
   const s = data.sessions.find((s) => String(s.id) === String(activeSession));
 
