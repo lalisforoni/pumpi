@@ -1590,6 +1590,30 @@ export default function Pumpi(){
   
   const touchStartY=useRef(0);
   const T=theme;
+  
+  const sync =
+  syncStatus === "saving"
+    ? {
+        icon: "🍑",
+        label: "Salvando...",
+        bg: "rgba(245, 158, 11, 0.14)",
+        color: "#f59e0b",
+      }
+    : syncStatus === "saved"
+    ? {
+        icon: "🟢",
+        label: "Sincronizado",
+        bg: "rgba(46, 125, 82, 0.14)",
+        color: T.green,
+      }
+    : syncStatus === "error"
+    ? {
+        icon: "🔴",
+        label: "Offline",
+        bg: "rgba(255, 80, 80, 0.14)",
+        color: T.danger,
+      }
+    : null;
 
   useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
 
