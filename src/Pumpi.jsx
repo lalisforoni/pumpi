@@ -69,10 +69,114 @@ const getPersona = name => {
 
 function getTimeTheme() {
   const h = new Date().getHours();
-  if (h>=6&&h<11)  return {id:"manha", label:"Manhã",    icon:"🌅",bg:"#f5f0e8",bgCard:"rgba(0,0,0,0.04)",  bgCardBorder:"rgba(0,0,0,0.09)",  header:"#f5f0e8",text:"#2a2318",textSub:"#8a7a6a",textMuted:"#b8a898",accent:"#c8622a",accentText:"#fff",   green:"#2e7d52",blue:"#2a5f8a",inputBg:"rgba(0,0,0,0.06)",      inputBorder:"rgba(0,0,0,0.12)",      divider:"rgba(0,0,0,0.08)",      scrollThumb:"#ccc",   modalBg:"#ece7de",danger:"#b33"};
-  if (h>=11&&h<17) return {id:"tarde", label:"Tarde",    icon:"☀️",bg:"#111108",bgCard:"rgba(255,220,60,0.04)",bgCardBorder:"rgba(255,200,40,0.1)",header:"#111108",text:"#f5e8c0",textSub:"#9a8050",textMuted:"#4a3820",accent:"#f0b84a",accentText:"#111108",green:"#7ec8a4",blue:"#a8bfd4",inputBg:"rgba(255,200,60,0.07)", inputBorder:"rgba(255,200,60,0.14)", divider:"rgba(255,200,60,0.08)", scrollThumb:"#3a3010",modalBg:"#1a1610",danger:"#ff6b6b"};
-  if (h>=17&&h<21) return {id:"noite", label:"Noite",    icon:"🌆",bg:"#0e0a16",bgCard:"rgba(180,80,255,0.04)",bgCardBorder:"rgba(180,80,255,0.1)",header:"#0e0a16",text:"#e8d0f8",textSub:"#7a5888",textMuted:"#3a2848",accent:"#b870ff",accentText:"#0e0a16",green:"#7ec8a4",blue:"#ff9f60",inputBg:"rgba(180,80,255,0.08)",inputBorder:"rgba(180,80,255,0.14)",divider:"rgba(180,80,255,0.08)",scrollThumb:"#3a2050",modalBg:"#180e22",danger:"#ff6b6b"};
-  return              {id:"madrugada",label:"Madrugada",icon:"🌙",bg:"#060810",bgCard:"rgba(60,100,255,0.04)", bgCardBorder:"rgba(60,100,255,0.09)", header:"#060810",text:"#b8c8f0",textSub:"#3a4860",textMuted:"#1e2840",accent:"#4870ff",accentText:"#fff",   green:"#50a898",blue:"#7898e0",inputBg:"rgba(60,100,255,0.08)",  inputBorder:"rgba(60,100,255,0.14)", divider:"rgba(60,100,255,0.07)", scrollThumb:"#181e38",modalBg:"#0c1020",danger:"#ff6b6b"};
+
+  // 🌅 MANHÃ - pastel claro
+  if (h >= 6 && h < 11)
+    return {
+      id: "manha",
+      label: "Manhã",
+      icon: "🌅",
+
+      bg: "#fff7ef",
+      bgCard: "rgba(255,255,255,0.65)",
+      bgCardBorder: "rgba(210,170,140,0.18)",
+
+      header: "#fff7ef",
+
+      text: "#3a2a20",
+      textSub: "#9b7c68",
+      textMuted: "#c8aa98",
+
+      accent: "#d9895b",
+      accentText: "#fff",
+
+      green: "#6fa886",
+      blue: "#7da0bd",
+
+      inputBg: "rgba(255,255,255,0.75)",
+      inputBorder: "rgba(180,130,100,0.18)",
+
+      divider: "rgba(160,120,90,0.12)",
+
+      scrollThumb: "#d8c4b8",
+      modalBg: "#fff3ea",
+
+      danger: "#c96b6b",
+    };
+
+  // ☀️ TARDE
+  if (h >= 11 && h < 18)
+    return {
+      id: "tarde",
+      label: "Tarde",
+      icon: "☀️",
+      bg: "#111108",
+      bgCard: "rgba(255,220,60,0.04)",
+      bgCardBorder: "rgba(255,200,40,0.1)",
+      header: "#111108",
+      text: "#f5e8c0",
+      textSub: "#9a8050",
+      textMuted: "#4a3820",
+      accent: "#f0b84a",
+      accentText: "#111108",
+      green: "#7ec8a4",
+      blue: "#a8bfd4",
+      inputBg: "rgba(255,200,60,0.07)",
+      inputBorder: "rgba(255,200,60,0.14)",
+      divider: "rgba(255,200,60,0.08)",
+      scrollThumb: "#3a3010",
+      modalBg: "#1a1610",
+      danger: "#ff6b6b",
+    };
+
+  // 🌆 NOITE
+  if (h >= 18 && h < 21)
+    return {
+      id: "noite",
+      label: "Noite",
+      icon: "🌆",
+      bg: "#0e0a16",
+      bgCard: "rgba(180,80,255,0.04)",
+      bgCardBorder: "rgba(180,80,255,0.1)",
+      header: "#0e0a16",
+      text: "#e8d0f8",
+      textSub: "#7a5888",
+      textMuted: "#3a2848",
+      accent: "#b870ff",
+      accentText: "#0e0a16",
+      green: "#7ec8a4",
+      blue: "#ff9f60",
+      inputBg: "rgba(180,80,255,0.08)",
+      inputBorder: "rgba(180,80,255,0.14)",
+      divider: "rgba(180,80,255,0.08)",
+      scrollThumb: "#3a2050",
+      modalBg: "#180e22",
+      danger: "#ff6b6b",
+    };
+
+  // 🌙 MADRUGADA
+  return {
+    id: "madrugada",
+    label: "Madrugada",
+    icon: "🌙",
+    bg: "#060810",
+    bgCard: "rgba(60,100,255,0.04)",
+    bgCardBorder: "rgba(60,100,255,0.09)",
+    header: "#060810",
+    text: "#b8c8f0",
+    textSub: "#3a4860",
+    textMuted: "#1e2840",
+    accent: "#4870ff",
+    accentText: "#fff",
+    green: "#50a898",
+    blue: "#7898e0",
+    inputBg: "rgba(60,100,255,0.08)",
+    inputBorder: "rgba(60,100,255,0.14)",
+    divider: "rgba(60,100,255,0.07)",
+    scrollThumb: "#181e38",
+    modalBg: "#0c1020",
+    danger: "#ff6b6b",
+  };
 }
 
 function useTimer(startedAt, active) {
@@ -1261,47 +1365,82 @@ function MetricsView({sessions,theme}){
 function ProfileView({ profile, sessions, theme, onLogout }) {
   const T = theme;
 
+  const downloadCSV = () => {
+    const rows = [];
+
+    sessions.forEach((s) => {
+      [...(s.lower || []), ...(s.upper || [])].forEach((ex) => {
+        rows.push({
+          date: s.date?.slice(0, 10),
+          status: s.status,
+          group: (s.lower || []).includes(ex) ? "lower" : "upper",
+          machine: ex.machine || "",
+          weight: ex.weight || "",
+          series: ex.series || "",
+          reps: ex.reps || "",
+          rp: ex.rp || "",
+          manual: s.manual ? "yes" : "no",
+        });
+      });
+    });
+
+    const header = Object.keys(rows[0] || {
+      date: "", status: "", group: "", machine: "", weight: "", series: "", reps: "", rp: "", manual: ""
+    });
+
+    const csv = [
+      header.join(","),
+      ...rows.map(row =>
+        header.map(h => `"${String(row[h] ?? "").replaceAll('"', '""')}"`).join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pumpi_treinos.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+  };
+
+  const changePassword = async () => {
+    if (!profile?.email) {
+      alert("Email não encontrado no perfil.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
+      redirectTo: "https://pumpi-two.vercel.app/confirmed.html",
+    });
+
+    if (error) alert("Erro ao enviar email: " + error.message);
+    else alert("Email para mudar senha enviado 🍑");
+  };
+
   return (
     <div>
-      <div
-        style={{
-          background: T.bgCard,
-          border: `1px solid ${T.bgCardBorder}`,
-          borderRadius: "16px",
-          padding: "20px",
-          marginBottom: "12px",
-        }}
-      >
-        <h2>@{profile?.username}</h2>
-        <p>{profile?.email}</p>
+      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
+        <h2 style={{ color: T.text }}>@{profile?.username}</h2>
+        <p style={{ color: T.textSub }}>{profile?.email}</p>
       </div>
 
-      <div
-        style={{
-          background: T.bgCard,
-          border: `1px solid ${T.bgCardBorder}`,
-          borderRadius: "16px",
-          padding: "20px",
-          marginBottom: "12px",
-        }}
-      >
-        <p>🏋️ Treinos: {sessions.length}</p>
-        <p>
-          ✅ Finalizados:{" "}
-          {sessions.filter(s => s.status === "done").length}
-        </p>
+      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
+        <p style={{ color: T.text }}>🏋️ Treinos: {sessions.length}</p>
+        <p style={{ color: T.text }}>✅ Finalizados: {sessions.filter(s => s.status === "done").length}</p>
       </div>
 
-      <button
-        onClick={onLogout}
-        style={{
-          width: "100%",
-          padding: "14px",
-          borderRadius: "12px",
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
+      <button onClick={downloadCSV} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: "none", background: T.accent, color: T.accentText, fontWeight: 800, marginBottom: "10px" }}>
+        Baixar treinos em CSV 📥
+      </button>
+
+      <button onClick={changePassword} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: `1px solid ${T.bgCardBorder}`, background: T.bgCard, color: T.text, marginBottom: "10px" }}>
+        Mudar senha 🔐
+      </button>
+
+      <button onClick={onLogout} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: "none", background: T.danger, color: "#fff" }}>
         Sair
       </button>
     </div>
