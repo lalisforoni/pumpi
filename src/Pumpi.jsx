@@ -1364,6 +1364,38 @@ function MetricsView({sessions,theme}){
 
 function ProfileView({ profile, sessions, theme, onLogout, user }) {
   const T = theme;
+  const syncBadge = () => {
+  if (syncStatus === "saving") {
+    return {
+      icon: "🍑",
+      label: "Salvando...",
+      bg: "rgba(245, 158, 11, 0.14)",
+      color: "#f59e0b",
+    };
+  }
+
+  if (syncStatus === "saved") {
+    return {
+      icon: "🟢",
+      label: "Sincronizado",
+      bg: "rgba(46, 125, 82, 0.14)",
+      color: T.green,
+    };
+  }
+
+  if (syncStatus === "error") {
+    return {
+      icon: "🔴",
+      label: "Offline",
+      bg: "rgba(255, 80, 80, 0.14)",
+      color: T.danger,
+    };
+  }
+
+  return null;
+};
+
+  const sync = syncBadge();
   const [feedbackType, setFeedbackType] = useState("suggestion");
   const [feedbackText, setFeedbackText] = useState("");
   const [sendingFeedback, setSendingFeedback] = useState(false);
@@ -1930,9 +1962,29 @@ export default function Pumpi(){
                 <span style={{fontSize:"16px"}}>🍑</span>
                 <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
                 <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
-                {syncStatus==='saving'&&<span className="pumpi-spin" style={{fontSize:"12px",marginLeft:"4px"}}>🍑</span>}
-                {syncStatus==='saved'&&<span style={{fontSize:"12px",marginLeft:"4px"}}>✅</span>}
-                {syncStatus==='error'&&<span style={{fontSize:"12px",marginLeft:"4px",color:T.danger}}>❌ Sem sync</span>}
+                {sync && (
+  <span
+    style={{
+      marginLeft: "6px",
+      background: sync.bg,
+      color: sync.color,
+      borderRadius: "999px",
+      padding: "3px 8px",
+      fontSize: "10px",
+      fontWeight: 800,
+      fontFamily: "'DM Sans',sans-serif",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      whiteSpace: "nowrap",
+    }}
+  >
+    <span className={syncStatus === "saving" ? "pumpi-spin" : ""}>
+      {sync.icon}
+    </span>
+    {sync.label}
+  </span>
+)}
               </div>
               <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
             </div>
