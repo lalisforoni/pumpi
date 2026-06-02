@@ -263,28 +263,28 @@ export default function Pumpi() {
     } catch {}
   };
 
-  const newSession = async () => {
-    const session = {
-      id: Date.now(),
-      date: new Date().toISOString(),
-      status: "pending",
-      startedAt: null,
-      finishedAt: null,
-      lower: [],
-      upper: [],
-      updatedAt: Date.now(),
-    };
-
-    await save({
-      ...data,
-      sessions: [session, ...data.sessions],
-    });
-
-    setActiveSession(session.id);
-    setTab("session");
+const newSession = async () => {
+  const session = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    status: "pending",
+    startedAt: null,
+    finishedAt: null,
+    lower: [],
+    upper: [],
+    updatedAt: Date.now(),
   };
 
-  const updateSession = async (updated) => {
+  await save({
+    ...data,
+    sessions: [session, ...data.sessions],
+  });
+
+  setActiveSession(session.id);
+  setTab("session");
+};
+
+const updateSession = async (updated) => {
   const withTimestamp = markSessionUpdated(updated);
 
   await save({
@@ -303,34 +303,29 @@ export default function Pumpi() {
   }
 };
 
-    if (!session) return;
+const finishSession = async () => {
+  const session = data.sessions.find(
+    (s) => String(s.id) === String(activeSession)
+  );
 
-    const updateSession = async (updated) => {
-  const withTimestamp = markSessionUpdated(updated);
+  if (!session) return;
+
+  const updated = markSessionUpdated({
+    ...session,
+    status: "done",
+    finishedAt: Date.now(),
+  });
 
   await save({
     ...data,
     sessions: data.sessions.map((item) =>
-      String(item.id) === String(withTimestamp.id)
-        ? withTimestamp
-        : item
+      String(item.id) === String(activeSession) ? updated : item
     ),
   });
 
-  setActiveSession(withTimestamp.id);
-
-  if (shouldSyncSession(withTimestamp)) {
-    saveSession(withTimestamp);
-  }
+  setCelebration(true);
+  saveSession(updated);
 };
-
-  const deleteSession = async (id) => {
-    addDeletedSessionId(id);
-
-    await save({
-      ...data,
-      sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
-    });
 
     setTab("home");
 
