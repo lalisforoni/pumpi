@@ -305,23 +305,24 @@ export default function Pumpi() {
 
     if (!session) return;
 
-    const updated = {
-      ...session,
-      status: "done",
-      finishedAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+    const updateSession = async (updated) => {
+  const withTimestamp = markSessionUpdated(updated);
 
-    await save({
-      ...data,
-      sessions: data.sessions.map((item) =>
-        String(item.id) === String(activeSession) ? updated : item
-      ),
-    });
+  await save({
+    ...data,
+    sessions: data.sessions.map((item) =>
+      String(item.id) === String(withTimestamp.id)
+        ? withTimestamp
+        : item
+    ),
+  });
 
-    setCelebration(true);
-    saveSession(updated);
-  };
+  setActiveSession(withTimestamp.id);
+
+  if (shouldSyncSession(withTimestamp)) {
+    saveSession(withTimestamp);
+  }
+};
 
   const deleteSession = async (id) => {
     addDeletedSessionId(id);
