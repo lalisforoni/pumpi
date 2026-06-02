@@ -1,2221 +1,444 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = "https://nibdvppatasucybzfzet.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pYmR2cHBhdGFzdWN5YnpmemV0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDI1NTUsImV4cCI6MjA5NDUxODU1NX0.H4lPCHC-bdlrf1JEXzWd1x-kzHeSdpFq6UFIepjhGUk";
-const DELETED_KEY = "pumpi_deleted_sessions";
-
-const pumpiStorage = {
-  getItem: (key) => {
-    try { return localStorage.getItem(key) || sessionStorage.getItem(key); }
-    catch { return null; }
-  },
-  setItem: (key, value) => {
-    try { localStorage.setItem(key, value); sessionStorage.setItem(key, value); }
-    catch {}
-  },
-  removeItem: (key) => {
-    try { localStorage.removeItem(key); sessionStorage.removeItem(key); }
-    catch {}
-  },
-};
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: true,
-    storageKey: "pumpi_auth",
-    storage: pumpiStorage,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
-
-const STORAGE_KEY = "pumpi_v1";
-const PENDING_KEY = "pumpi_pending_sync";
-
-const defaultMachines = {
-  lower: ["Mesa Flexora","Adutora","Abdutora","Cadeira Flexora","Cadeira Extensora","Leg Press","Panturrilha","Agachamento"],
-  upper: ["Supino","Puxada Frontal","Remada","Desenvolvimento","Crucifixo","Bíceps","Tríceps","Ombro","Rosca Direta","Voador"],
-};
-const repOptions = ["6-8","8-10","10-12","12-15","6","8","10","12","15"];
-
-const PERSONAS = [
-  {keys:["coice"],          name:"Coice da Égua",          emoji:"🐴",color:"#ff7eb3"},
-  {keys:["abdutora"],           name:"Abre & Abre",           emoji:"🦋",color:"#a78bfa"},
-  {keys:["adutora"],           name:"Fecha & Fecha",           emoji:"🦋",color:"#a78bfa"},
-  {keys:["mesa flexora"],      name:"Deitada & Humilhada",             emoji:"🌀",color:"#60d0ff"},
-  {keys:["cadeira flexora"],   name:"A Puxadinha",            emoji:"🪝",color:"#86efac"},
-  {keys:["cadeira extensora"], name:"Pontapé da Fama",        emoji:"🦵",color:"#fbbf24"},
-  {keys:["leg press"],         name:"Empurrão Rainha",        emoji:"👑",color:"#f472b6"},
-  {keys:["agachamento"],       name:"Vai Fundo",              emoji:"🍑",color:"#fb923c"},
-  {keys:["panturrilha"],       name:"Na Ponta do Pé",         emoji:"💃",color:"#34d399"},
-  {keys:["hip thrust"],        name:"Empurra Bunda",          emoji:"🚀",color:"#c084fc"},
-  {keys:["stiff"],             name:"Curvada Elegante",       emoji:"🎩",color:"#94a3b8"},
-  {keys:["afundo","passada"],  name:"Passadinha Dramática",   emoji:"🎭",color:"#f59e0b"},
-  {keys:["supino"],            name:"Peito Aberto",           emoji:"🦅",color:"#38bdf8"},
-  {keys:["puxada"],            name:"Macacona",               emoji:"🦍",color:"#a3e635"},
-  {keys:["remada"],            name:"A Barqueira",            emoji:"🚣",color:"#22d3ee"},
-  {keys:["bíceps","bicep","rosca direta"], name:"Mostra o Músculo", emoji:"💪",color:"#fb7185"},
-  {keys:["tríceps","tricep"],  name:"O Que Balança Atrás",   emoji:"🔔",color:"#a78bfa"},
-  {keys:["ombro","desenvolv"], name:"Largura de Porta",       emoji:"🚪",color:"#60a5fa"},
-  {keys:["crucifixo","voador"],name:"Cristo Redentor",        emoji:"🗿",color:"#4ade80"},
-  {keys:["glut","gluteo"],     name:"Bunda Power",            emoji:"🍑",color:"#e879f9"},
-];
-
-const getPersona = name => {
-  const n = name.toLowerCase();
-  return PERSONAS.find(p=>p.keys.some(k=>n.includes(k))) || {name,emoji:"🏋️",color:"#94a3b8"};
-};
-
-function getTimeTheme() {
-  const h = new Date().getHours();
-
-  // 🌅 MANHÃ - pastel claro
-  if (h >= 6 && h < 11)
-    return {
-      id: "manha",
-      label: "Manhã",
-      icon: "🌅",
-
-      bg: "#fff7ef",
-      bgCard: "rgba(255,255,255,0.65)",
-      bgCardBorder: "rgba(210,170,140,0.18)",
-
-      header: "#fff7ef",
-
-      text: "#3a2a20",
-      textSub: "#9b7c68",
-      textMuted: "#c8aa98",
-
-      accent: "#d9895b",
-      accentText: "#fff",
-
-      green: "#6fa886",
-      blue: "#7da0bd",
-
-      inputBg: "rgba(255,255,255,0.75)",
-      inputBorder: "rgba(180,130,100,0.18)",
-
-      divider: "rgba(160,120,90,0.12)",
-
-      scrollThumb: "#d8c4b8",
-      modalBg: "#fff3ea",
-
-      danger: "#c96b6b",
-    };
-
-  // ☀️ TARDE
-  if (h >= 11 && h < 18)
-    return {
-      id: "tarde",
-      label: "Tarde",
-      icon: "☀️",
-      bg: "#111108",
-      bgCard: "rgba(255,220,60,0.04)",
-      bgCardBorder: "rgba(255,200,40,0.1)",
-      header: "#111108",
-      text: "#f5e8c0",
-      textSub: "#9a8050",
-      textMuted: "#4a3820",
-      accent: "#f0b84a",
-      accentText: "#111108",
-      green: "#7ec8a4",
-      blue: "#a8bfd4",
-      inputBg: "rgba(255,200,60,0.07)",
-      inputBorder: "rgba(255,200,60,0.14)",
-      divider: "rgba(255,200,60,0.08)",
-      scrollThumb: "#3a3010",
-      modalBg: "#1a1610",
-      danger: "#ff6b6b",
-    };
-
-  // 🌆 NOITE
-  if (h >= 18 && h < 21)
-    return {
-      id: "noite",
-      label: "Noite",
-      icon: "🌆",
-      bg: "#0e0a16",
-      bgCard: "rgba(180,80,255,0.04)",
-      bgCardBorder: "rgba(180,80,255,0.1)",
-      header: "#0e0a16",
-      text: "#e8d0f8",
-      textSub: "#7a5888",
-      textMuted: "#3a2848",
-      accent: "#b870ff",
-      accentText: "#0e0a16",
-      green: "#7ec8a4",
-      blue: "#ff9f60",
-      inputBg: "rgba(180,80,255,0.08)",
-      inputBorder: "rgba(180,80,255,0.14)",
-      divider: "rgba(180,80,255,0.08)",
-      scrollThumb: "#3a2050",
-      modalBg: "#180e22",
-      danger: "#ff6b6b",
-    };
-
-  // 🌙 MADRUGADA
-  return {
-    id: "madrugada",
-    label: "Madrugada",
-    icon: "🌙",
-    bg: "#060810",
-    bgCard: "rgba(60,100,255,0.04)",
-    bgCardBorder: "rgba(60,100,255,0.09)",
-    header: "#060810",
-    text: "#b8c8f0",
-    textSub: "#3a4860",
-    textMuted: "#1e2840",
-    accent: "#4870ff",
-    accentText: "#fff",
-    green: "#50a898",
-    blue: "#7898e0",
-    inputBg: "rgba(60,100,255,0.08)",
-    inputBorder: "rgba(60,100,255,0.14)",
-    divider: "rgba(60,100,255,0.07)",
-    scrollThumb: "#181e38",
-    modalBg: "#0c1020",
-    danger: "#ff6b6b",
-  };
-}
-
-function useTimer(startedAt, active) {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(()=>{
-    if (!active||!startedAt) return;
-    const upd=()=>setElapsed(Math.floor((Date.now()-startedAt)/1000));
-    upd(); const id=setInterval(upd,1000); return ()=>clearInterval(id);
-  },[active,startedAt]);
-  const s=elapsed%60,m=Math.floor(elapsed/60)%60,hh=Math.floor(elapsed/3600);
-  return hh>0?`${String(hh).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-}
-
-function calcDuration(a,b){
-  if (!a||!b) return null;
-  const m=Math.floor((b-a)/60000),hh=Math.floor(m/60);
-  return hh>0?`${hh}h ${m%60}min`:`${m}min`;
-}
-
-function getSessionSortTime(session) {
-  const dateTime = Date.parse(session?.date);
-
-  if (!Number.isNaN(dateTime)) {
-    return dateTime;
-  }
-
-  const fallback =
-    session?.finishedAt ??
-    session?.startedAt ??
-    session?.id ??
-    0;
-
-  return Number(fallback) || 0;
-}
-
-function sortSessions(sessions = []) {
-  return [...sessions].sort((a, b) => {
-    const dateDiff = getSessionSortTime(b) - getSessionSortTime(a);
-
-    if (dateDiff !== 0) return dateDiff;
-
-    return Number(b.id || 0) - Number(a.id || 0);
-  });
-}
-
-function getDeletedSessionIds() {
-  try {
-    return JSON.parse(localStorage.getItem(DELETED_KEY) || "[]").map(String);
-  } catch {
-    return [];
-  }
-}
-
-function setDeletedSessionIds(ids) {
-  try {
-    localStorage.setItem(DELETED_KEY, JSON.stringify([...new Set(ids.map(String))]));
-  } catch {}
-}
-
-function addDeletedSessionId(id) {
-  const ids = getDeletedSessionIds();
-  setDeletedSessionIds([...ids, String(id)]);
-}
-
-function removeDeletedSessionId(id) {
-  const ids = getDeletedSessionIds();
-  setDeletedSessionIds(ids.filter((x) => x !== String(id)));
-}
-
-function mergeSessionPair(remoteSession, localSession) {
-  if (!remoteSession) return localSession;
-  if (!localSession) return remoteSession;
-
-  const remoteUpdated =
-    remoteSession.updatedAt ||
-    remoteSession.finishedAt ||
-    remoteSession.startedAt ||
-    remoteSession.id ||
-    0;
-
-  const localUpdated =
-    localSession.updatedAt ||
-    localSession.finishedAt ||
-    localSession.startedAt ||
-    localSession.id ||
-    0;
-
-  return Number(remoteUpdated) >= Number(localUpdated)
-    ? remoteSession
-    : localSession;
-}
-
-function mergeSessions(remote = [], local = []) {
-  const remoteById = new Map(remote.map((s) => [String(s.id), s]));
-  const localById = new Map(local.map((s) => [String(s.id), s]));
-
-  const ids = new Set([
-    ...remoteById.keys(),
-    ...localById.keys(),
-  ]);
-
-  return sortSessions(
-    [...ids].map((id) =>
-      mergeSessionPair(remoteById.get(id), localById.get(id))
-    )
-  );
-}
-
-async function logSupabaseError(label, error, extra = {}) {
-  console.error(label, {
-    message: error?.message,
-    code: error?.code,
-    details: error?.details,
-    hint: error?.hint,
-    name: error?.name,
-    status: error?.status,
-    ...extra,
-  });
-}
-
-async function saveOnce(session, uid) {
-  const {
-    data: { user: authUser },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError) throw userError;
-  if (!authUser?.id) throw new Error("Sem usuário autenticado no Supabase");
-
-  if (authUser.id !== uid) {
-    throw new Error(`UID divergente. auth=${authUser.id}, esperado=${uid}`);
-  }
-
-  const normalizedId = Number(session.id);
-
-  const payload = {
-    id: normalizedId,
-    user_id: authUser.id,
-    data: {
-      ...session,
-      id: normalizedId,
-    },
-  };
-
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("timeout_save")), 8000)
-  );
-
-  const result = await Promise.race([
-    supabase
-      .from("sessions")
-      .upsert(payload, { onConflict: "id" })
-      .select("id,user_id")
-      .single(),
-    timeout,
-  ]);
-
-  const { data, error } = result;
-
-  if (error) {
-    logSupabaseError("UPSERT falhou", error, { payload });
-    throw error;
-  }
-
-  console.info("Save UPSERT OK:", data);
-  return true;
-}
-
-async function saveWithRetry(session, uid, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const ok = await saveOnce(session, uid);
-      if (ok) return true;
-    } catch (e) {
-      logSupabaseError(`Save tentativa ${i + 1} exception`, e);
-
-      if (i < retries - 1) {
-        await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
-      }
-    }
-  }
-
-  return false;
-}
-
-async function deleteWithRetry(id, uid, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const deletePromise = supabase
-        .from("sessions")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", uid);
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("timeout_delete")), 5000)
-      );
-
-      const { error } = await Promise.race([deletePromise, timeoutPromise]);
-
-      if (!error) return true;
-
-      console.error(`Delete tentativa ${i + 1} falhou:`, error.message);
-    } catch (e) {
-      console.error(`Delete tentativa ${i + 1} exception:`, e.message);
-    }
-
-    if (i < retries - 1) {
-      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
-    }
-  }
-
-  return false;
-}
-
-function Confetti({onDone}){
-  const ref=useRef(null);
-  useEffect(()=>{
-    const c=ref.current; if(!c) return;
-    const ctx=c.getContext("2d"); c.width=window.innerWidth; c.height=window.innerHeight;
-    const cols=["#f0b84a","#ff6b6b","#7ec8a4","#c87aff","#ff9f43","#fff","#60d0ff","#ffb3d9"];
-    const ps=Array.from({length:150},()=>({x:Math.random()*c.width,y:-30-Math.random()*300,d:1.5+Math.random()*3,color:cols[Math.floor(Math.random()*cols.length)],spin:(Math.random()-.5)*.18,angle:Math.random()*Math.PI*2,w:5+Math.random()*9,h:3+Math.random()*5,shape:Math.random()>.5?"rect":"circle",wave:Math.random()*Math.PI*2}));
-    let fr,el=0;
-    const draw=()=>{ctx.clearRect(0,0,c.width,c.height);const a=Math.max(0,1-el/200);ps.forEach(p=>{ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.globalAlpha=a;ctx.fillStyle=p.color;if(p.shape==="rect")ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);else{ctx.beginPath();ctx.arc(0,0,p.w/4,0,Math.PI*2);ctx.fill();}ctx.restore();p.y+=p.d;p.x+=Math.sin(p.wave+el*.025)*1.4;p.angle+=p.spin;p.wave+=.02;if(p.y>c.height+20){p.y=-20;p.x=Math.random()*c.width;}});el++;if(el<240)fr=requestAnimationFrame(draw);else onDone();};
-    draw(); return ()=>cancelAnimationFrame(fr);
-  },[]);
-  return <canvas ref={ref} style={{position:"fixed",inset:0,zIndex:998,pointerEvents:"none"}}/>;
-}
-
-function CelebrationModal({theme,session,onClose}){
-  const [conf,setConf]=useState(true);
-  const total=(session.lower?.length||0)+(session.upper?.length||0);
-  const dur=calcDuration(session.startedAt,session.finishedAt);
-  const msgs=["Arrasou demais! 🔥","Mais um no bolso! 🏆","Você é incrível! ⚡","Missão cumprida! 🎯","Bumbum na nuca chegando! 🍑"];
-  const [msg]=useState(()=>msgs[Math.floor(Math.random()*msgs.length)]);
-  return(<>
-    {conf&&<Confetti onDone={()=>setConf(false)}/>}
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(10px)",padding:"20px"}} onClick={onClose}>
-      <div style={{background:theme.modalBg,border:`2px solid ${theme.accent}50`,borderRadius:"28px",padding:"40px 28px 32px",textAlign:"center",maxWidth:"320px",width:"100%",boxShadow:`0 0 80px ${theme.accent}25`}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:"64px",marginBottom:"12px",lineHeight:1}}>🍑</div>
-        <h2 style={{color:theme.accent,fontSize:"22px",fontWeight:800,fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>{msg}</h2>
-        {dur&&<p style={{color:theme.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginBottom:"4px"}}>⏱ Duração: <strong style={{color:theme.text}}>{dur}</strong></p>}
-        <p style={{color:theme.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginBottom:"20px"}}>{total} exercícios · {session.lower?.length||0} lower · {session.upper?.length||0} upper</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:"6px",justifyContent:"center",marginBottom:"24px"}}>
-          {[...(session.lower||[]),...(session.upper||[])].map((ex,i)=>(
-            <span key={i} style={{background:`${theme.accent}18`,border:`1px solid ${theme.accent}30`,borderRadius:"8px",padding:"4px 10px",color:theme.accent,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` ${ex.weight}kg`:""}</span>
-          ))}
-        </div>
-        <button onClick={onClose} style={{background:theme.accent,border:"none",borderRadius:"14px",color:theme.accentText,fontWeight:800,fontSize:"15px",padding:"14px 32px",cursor:"pointer",width:"100%",fontFamily:"'DM Sans',sans-serif"}}>Fechar 💪</button>
-      </div>
-    </div>
-  </>);
-}
-
-function LoginScreen({theme,onLogin}){
-  const T=theme;
-  const [mode,setMode]=useState("login");
-  const [email,setEmail]=useState("");
-  const [password,setPassword]=useState("");
-  const [username,setUsername]=useState("");
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
-  const [success,setSuccess]=useState("");
-
-  const handleSubmit=async()=>{
-    setLoading(true); setError(""); setSuccess("");
-    try{
-      if(mode==="login"){
-        const{data,error}=await supabase.auth.signInWithPassword({email,password});
-        if(error) throw error;
-        if(data.user) onLogin(data.user);
-      } else {
-        const{data,error}=await supabase.auth.signUp({email,password});
-        if(error) throw error;
-        if(data.user){
-          await supabase.from("profiles").upsert({
-            id:data.user.id,
-            username:username.trim().toLowerCase(),
-            email:email.trim().toLowerCase()
-          },{onConflict:"id"});
-          if(data.session) onLogin(data.user);
-          else setSuccess("Conta criada! Verifique seu email para confirmar. 🍑");
-        }
-      }
-    } catch(e){ setError(e.message||"Erro ao entrar"); }
-    setLoading(false);
-  };
-
-  const handleForgotPassword=async()=>{
-    if(!email){setError("Digite seu email primeiro!");return;}
-    setLoading(true);
-    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:"https://pumpi-two.vercel.app/confirmed.html"});
-    if(error) setError(error.message);
-    else setSuccess("Email de recuperação enviado! 🍑");
-    setLoading(false);
-  };
-
-  const inp={background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"12px",color:T.text,fontSize:"15px",padding:"14px 16px",width:"100%",fontFamily:"'DM Sans',sans-serif",outline:"none",marginBottom:"10px"};
-
-  return(
-    <div style={{background:T.bg,minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-      <div style={{width:"100%",maxWidth:"360px"}}>
-        <div style={{textAlign:"center",marginBottom:"40px"}}>
-          <div style={{fontSize:"64px",marginBottom:"12px"}}>🍑</div>
-          <h1 style={{color:T.accent,fontSize:"28px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</h1>
-          <p style={{color:T.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginTop:"4px"}}>Progresso de Treino</p>
-        </div>
-        <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"4px",marginBottom:"20px",border:`1px solid ${T.bgCardBorder}`}}>
-          {["login","signup"].map(m=>(
-            <button key={m} onClick={()=>{setMode(m);setError("");setSuccess("");}} style={{flex:1,padding:"10px",background:mode===m?T.accent:"transparent",border:"none",borderRadius:"8px",color:mode===m?T.accentText:T.textSub,fontWeight:700,fontSize:"13px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-              {m==="login"?"Entrar":"Cadastrar"}
-            </button>
-          ))}
-        </div>
-        {mode==="signup"&&<input placeholder="Username (ex: laura)" value={username} onChange={e=>setUsername(e.target.value)} style={inp}/>}
-        <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} type="email" style={inp}/>
-        <input placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)} type="password" style={{...inp,marginBottom:"16px"}}/>
-        {error&&<p style={{color:T.danger,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",marginBottom:"10px",textAlign:"center"}}>{error}</p>}
-        {success&&<p style={{color:T.green,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",marginBottom:"10px",textAlign:"center"}}>{success}</p>}
-        <button onClick={handleSubmit} disabled={loading} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"16px",padding:"16px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",opacity:loading?0.7:1}}>
-          {loading?"...":(mode==="login"?"Entrar 🍑":"Criar conta 🍑")}
-        </button>
-        {mode==="login"&&(
-          <button onClick={handleForgotPassword} disabled={loading} style={{background:"none",border:"none",color:T.textMuted,fontSize:"13px",cursor:"pointer",width:"100%",marginTop:"14px",fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>
-            Esqueci minha senha
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-function ManualSessionModal({theme,onSave,onClose,allSessions}){
-  const T=theme;
-  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
-  const [durMin,setDurMin]=useState("");
-  const [lower,setLower]=useState([]);
-  const [upper,setUpper]=useState([]);
-  const [addingGroup,setAddingGroup]=useState(null);
-  const [customMachine,setCustomMachine]=useState("");
-
-  const addEx=(group,machine)=>{
-    const allExs=allSessions.flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
-    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const last=allHist[0];
-    const ex={id:Date.now(),machine,weight:last?.weight||"",rp:last?.rp||"",reps:last?.reps||"",series:"",weightHistory:[]};
-    if(group==="lower") setLower(p=>[...p,ex]);
-    else setUpper(p=>[...p,ex]);
-    setAddingGroup(null); setCustomMachine("");
-  };
-  const updEx=(group,id,val)=>{
-    if(group==="lower") setLower(p=>p.map(e=>e.id===id?{...e,...val}:e));
-    else setUpper(p=>p.map(e=>e.id===id?{...e,...val}:e));
-  };
-  const delEx=(group,id)=>{
-    if(group==="lower") setLower(p=>p.filter(e=>e.id!==id));
-    else setUpper(p=>p.filter(e=>e.id!==id));
-  };
-
-  const handleSave=()=>{
-    const dateObj=new Date(date+"T12:00:00");
-    const dur=durMin?parseInt(durMin)*60000:0;
-    const addHistory=(exs)=>exs.map(ex=>({
-      ...ex,
-      weightHistory: ex.weight?[{weight:ex.weight,reps:ex.reps,rp:ex.rp,series:ex.series,date:dateObj.toISOString()}]:[],
-    }));
-    const session={
-      id:Date.now(),
-      date:dateObj.toISOString(),
-      status:"done",
-      startedAt:dateObj.getTime(),
-      finishedAt:dateObj.getTime()+dur,
-      lower:addHistory(lower),
-      upper:addHistory(upper),
-      manual:true,
-    };
-    onSave(session);
-  };
-
-  const inp={background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"};
-  const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",list:lower},{key:"upper",label:"Upper Body",emoji:"💪",list:upper}];
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={onClose}>
-      <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"90vh",overflowY:"auto",position:"relative"}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
-        <button onClick={onClose} style={{position:"absolute",top:"20px",right:"20px",background:"none",border:"none",color:T.textMuted,fontSize:"22px",cursor:"pointer",lineHeight:1}}>✕</button>
-        <p style={{color:T.accent,fontSize:"11px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>📅 Lançar Treino Antigo</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}}>
-          <div>
-            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DATA</p>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{...inp,width:"100%"}}/>
-          </div>
-          <div>
-            <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"6px"}}>DURAÇÃO (min)</p>
-            <input type="number" placeholder="ex: 46" value={durMin} onChange={e=>setDurMin(e.target.value)} style={{...inp,width:"100%"}}/>
-          </div>
-        </div>
-        {groups.map(g=>(
-          <div key={g.key} style={{marginBottom:"20px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
-              <span style={{color:T.textSub,fontSize:"12px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{g.emoji} {g.label} ({g.list.length})</span>
-              <button onClick={()=>setAddingGroup(addingGroup===g.key?null:g.key)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>
-            </div>
-            {addingGroup===g.key&&(
-              <>
-                <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
-                  <input placeholder="Nome da máquina..." value={customMachine} onChange={e=>setCustomMachine(e.target.value)}
-                    onKeyDown={e=>e.key==="Enter"&&customMachine.trim()&&addEx(g.key,customMachine.trim())}
-                    style={{...inp,flex:1}}/>
-                  <button onClick={()=>customMachine.trim()&&addEx(g.key,customMachine.trim())} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 14px",cursor:"pointer"}}>+</button>
-                </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"10px"}}>
-                  {defaultMachines[g.key].map(s=>(
-                    <button key={s} onClick={()=>addEx(g.key,s)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px",color:T.textSub,fontSize:"11px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>
-                  ))}
-                </div>
-              </>
-            )}
-            {g.list.length>0&&(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",padding:"4px 8px",marginBottom:"4px"}}>
-                {["Máquina","Peso","Séries","Reps","RP",""].map((h,i)=>(
-                  <span key={i} style={{color:T.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:i>0?"center":"left",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
-                ))}
-              </div>
-            )}
-            {g.list.map(ex=>(
-              <div key={ex.id} style={{display:"grid",gridTemplateColumns:"1fr 58px 48px 62px 52px 28px",gap:"4px",alignItems:"center",padding:"8px",background:T.bgCard,borderRadius:"10px",border:`1px solid ${T.bgCardBorder}`,marginBottom:"6px"}}>
-                <span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.machine}</span>
-                <input type="text" placeholder="kg" value={ex.weight} onChange={e=>updEx(g.key,ex.id,{weight:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.accent}}/>
-                <input type="number" placeholder="4" value={ex.series} onChange={e=>updEx(g.key,ex.id,{series:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
-                <select value={ex.reps} onChange={e=>updEx(g.key,ex.id,{reps:e.target.value})} style={{...inp,padding:"5px",fontSize:"11px",color:T.blue}}>
-                  <option value="">rep</option>
-                  {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
-                </select>
-                <input type="number" placeholder="RP" value={ex.rp} onChange={e=>updEx(g.key,ex.id,{rp:e.target.value})} style={{...inp,padding:"5px",textAlign:"center",fontSize:"12px",color:T.green}}/>
-                <button onClick={()=>delEx(g.key,ex.id)} style={{background:"rgba(255,80,80,0.1)",border:"none",borderRadius:"6px",color:"#ff6b6b",fontSize:"14px",cursor:"pointer",padding:"4px 0",width:"28px"}}>×</button>
-              </div>
-            ))}
-          </div>
-        ))}
-        <button onClick={handleSave} style={{background:T.accent,border:"none",borderRadius:"14px",color:T.accentText,fontWeight:800,fontSize:"15px",padding:"14px",width:"100%",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-          Salvar Treino 🍑
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function FriendsView({theme,user,sessions}){
-  const T=theme;
-  const [friends,setFriends]=useState([]);
-  const [pending,setPending]=useState([]);
-  const [sent,setSent]=useState([]);
-  const [battles,setBattles]=useState([]);
-  const [suggestions,setSuggestions]=useState([]);
-  const [searchEmail,setSearchEmail]=useState("");
-  const [searchResult,setSearchResult]=useState(null);
-  const [searching,setSearching]=useState(false);
-  const [tab,setTab]=useState("friends");
-  const [selectedFriend,setSelectedFriend]=useState(null);
-  const [loadingFriends,setLoadingFriends]=useState(true);
-
-  const getCurrentUid = async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) console.error("Erro ao buscar usuario autenticado:", error);
-    return data?.user?.id || user?.id || null;
-  };
-
-  useEffect(()=>{
+import { supabase, saveWithRetry, deleteWithRetry } from "./lib/supabase";
+import { STORAGE_KEY, PENDING_KEY, getDeletedSessionIds, addDeletedSessionId, removeDeletedSessionId, mergeSessions, sortSessions } from "./lib/storage";
+import { getTimeTheme } from "./lib/themes";
+import { calcDuration } from "./lib/utils";
+
+import LoginScreen from "./components/LoginScreen";
+import SessionView from "./components/SessionView";
+import FriendsView from "./components/FriendsView";
+import MetricsView from "./components/MetricsView";
+import ProfileView from "./components/ProfileView";
+import ManualSessionModal from "./components/ManualSessionModal";
+import CelebrationModal from "./components/CelebrationModal";
+
+export default function Pumpi() {
+  const [data, setData] = useState({ sessions: [] });
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
+  const [tab, setTab] = useState("home");
+  const [loaded, setLoaded] = useState(false);
+  const [theme, setTheme] = useState(getTimeTheme());
+  const [celebration, setCelebration] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const touchStartY = useRef(0);
+  const T = theme;
+
+  // Atualiza tema a cada minuto
+  useEffect(() => {
+    const id = setInterval(() => setTheme(getTimeTheme()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Auto-refresh a cada 5 min (fora da sessão ativa)
+  useEffect(() => {
+    if (!user) return;
+    const id = setInterval(() => {
+      if (tab !== "session") loadData(user.id);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [user, tab]);
+
+  // Init
+  useEffect(() => {
     let alive = true;
 
-    const run = async () => {
-      if (!user?.id) {
-        setLoadingFriends(false);
-        return;
-      }
-
-      await loadFriends(alive);
-    };
-
-    run();
-
-    return () => {
-      alive = false;
-    };
-  },[user?.id]);
-
-  const loadFriends = async (alive = true) => {
-    setLoadingFriends(true);
-
-    const task = async () => {
-      const uid = await getCurrentUid();
-
-      if (!uid) {
-        setFriends([]);
-        setPending([]);
-        setSent([]);
-        setBattles([]);
-        setSuggestions([]);
-        return;
-      }
-
-      const { data: reqs, error: reqsError } = await supabase
-        .from("friendships")
-        .select("*")
-        .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`);
-
-      if (reqsError) throw reqsError;
-
-      const profileIds = [
-        ...new Set(
-          (reqs || []).flatMap((r) => [r.requester_id, r.receiver_id])
-        ),
-      ].filter((id) => id && id !== uid);
-
-      let involvedProfiles = [];
-
-      if (profileIds.length > 0) {
-        const { data: profilesData, error: profilesError } = await supabase
-          .from("profiles")
-          .select("id,username,email")
-          .in("id", profileIds);
-
-        if (profilesError) throw profilesError;
-        involvedProfiles = profilesData || [];
-      }
-
-      const { data: allProfiles, error: allProfilesError } = await supabase
-        .from("profiles")
-        .select("id,username,email")
-        .neq("id", uid)
-        .limit(50);
-
-      if (allProfilesError) throw allProfilesError;
-
-      const getProfile = (id) =>
-        involvedProfiles.find((p) => p.id === id) ||
-        (allProfiles || []).find((p) => p.id === id) ||
-        null;
-
-      const accepted = (reqs || [])
-        .filter((r) => r.status === "accepted")
-        .map((r) => {
-          const otherId = r.requester_id === uid ? r.receiver_id : r.requester_id;
-          const profile = getProfile(otherId);
-
-          return {
-            id: otherId,
-            username: profile?.username || profile?.email || "sem_username",
-            email: profile?.email,
-            friendshipId: r.id,
-          };
-        });
-
-      const pend = (reqs || [])
-        .filter((r) => r.status === "pending" && r.receiver_id === uid)
-        .map((r) => ({
-          ...r,
-          requesterUsername:
-            getProfile(r.requester_id)?.username ||
-            getProfile(r.requester_id)?.email ||
-            "sem_username",
-        }));
-
-      const sentReqs = (reqs || [])
-        .filter((r) => r.status === "pending" && r.requester_id === uid)
-        .map((r) => ({
-          ...r,
-          receiverUsername:
-            getProfile(r.receiver_id)?.username ||
-            getProfile(r.receiver_id)?.email ||
-            "sem_username",
-        }));
-
-      const usedIds = [
-        uid,
-        ...(reqs || []).map((r) =>
-          r.requester_id === uid ? r.receiver_id : r.requester_id
-        ),
-      ];
-
-      const { data: bts, error: battlesError } = await supabase
-        .from("battles")
-        .select("*")
-        .or(`challenger_id.eq.${uid},opponent_id.eq.${uid}`)
-        .eq("status", "active");
-
-      if (battlesError) throw battlesError;
-
-      if (!alive) return;
-
-      setFriends(accepted);
-      setPending(pend);
-      setSent(sentReqs);
-      setSuggestions((allProfiles || []).filter((p) => !usedIds.includes(p.id)));
-      setBattles(bts || []);
-    };
-
-    try {
-      await task();
-    } catch (e) {
-      console.error("loadFriends falhou:", e);
-      if (alive) {
-        setBattles([]);
-        setSuggestions([]);
-      }
-    } finally {
-      if (alive) setLoadingFriends(false);
-    }
-  };
-
-  const searchUser=async()=>{
-    setSearching(true);
-    setSearchResult(null);
-
-    try{
-      const uid = await getCurrentUid();
-
-      if (!uid) {
-        setSearchResult("not_found");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id,username,email")
-        .eq("email", searchEmail.trim().toLowerCase())
-        .neq("id", uid)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      setSearchResult(data || "not_found");
-    }catch(e){
-      console.error("searchUser falhou:", e);
-      setSearchResult("not_found");
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const sendRequest=async(receiverId)=>{
-    try{
-      const uid = await getCurrentUid();
-      if (!uid) throw new Error("Usuario nao autenticado");
-
-      const { error } = await supabase
-        .from("friendships")
-        .insert({requester_id:uid,receiver_id:receiverId,status:"pending"});
-
-      if (error) throw error;
-
-      setSearchEmail("");
-      setSearchResult(null);
-      await loadFriends();
-    }catch(e){ alert("Erro ao enviar pedido: "+e.message); }
-  };
-
-  const acceptRequest=async(friendshipId)=>{
-    try{
-      const { error } = await supabase
-        .from("friendships")
-        .update({status:"accepted"})
-        .eq("id",friendshipId);
-
-      if (error) throw error;
-
-      await loadFriends();
-    }catch(e){ alert("Erro ao aceitar: "+e.message); }
-  };
-
-  const createBattle=async(opponentId,type)=>{
-    try {
-      const uid = await getCurrentUid();
-      if (!uid) throw new Error("Usuario nao autenticado");
-
-      const ends=new Date();
-      ends.setDate(ends.getDate()+7);
-
-      const { error } = await supabase
-        .from("battles")
-        .insert({challenger_id:uid,opponent_id:opponentId,type,status:"active",ends_at:ends.toISOString()});
-
-      if (error) throw error;
-
-      setSelectedFriend(null);
-      await loadFriends();
-      alert("Batalha criada! Que vença a melhor 🔥");
-    } catch(e) {
-      alert("Erro ao criar batalha: " + e.message);
-    }
-  };
-
-  const myStreak=()=>{
-    const done=sessions.filter(s=>s.status==="done");
-    const days=[...new Set(done.map(s=>s.date.slice(0,10)))].sort();
-    let streak=0;
-    if(days.length){
-      const today=new Date().toISOString().slice(0,10);
-      const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
-      if(days[days.length-1]===today||days[days.length-1]===yesterday){
-        streak=1;
-        for(let i=days.length-2;i>=0;i--){
-          const d=(new Date(days[i+1])-new Date(days[i]))/(1000*60*60*24);
-          if(d===1)streak++;else break;
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (session?.user) {
+          setUser(session.user);
+          await loadData(session.user.id);
+        } else {
+          const s = localStorage.getItem(STORAGE_KEY);
+          if (s) setData(JSON.parse(s));
         }
+      } catch (e) {
+        console.error("Init falhou:", e?.message);
+        try { const s = localStorage.getItem(STORAGE_KEY); if (s) setData(JSON.parse(s)); } catch {}
+      } finally {
+        if (alive) setLoaded(true);
       }
-    }
-    return streak;
-  };
+    };
 
-  const myLower=sessions.reduce((a,s)=>a+(s.lower?.length||0),0);
-  const battleTypes=[
-    {id:"streak",label:"🔥 Batalha de Streak",desc:"Quem mantém mais dias seguidos em 7 dias"},
-    {id:"lower",label:"🍑 Batalha do Fundão",desc:"Quem faz mais exercícios lower em 7 dias"},
-    {id:"total",label:"💪 Batalha Total",desc:"Quem treina mais vezes em 7 dias"},
-  ];
-  const Card=({children,style={}})=>(<div style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"14px",padding:"14px",marginBottom:"10px",...style}}>{children}</div>);
+    init();
 
-  if(loadingFriends) return(
-    <div style={{textAlign:"center",padding:"60px 20px"}}>
-      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
-      <span className="pumpi-spin" style={{fontSize:"32px"}}>🍑</span>
-      <p style={{color:T.textSub,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",marginTop:"12px"}}>Carregando amigos...</p>
-    </div>
-  );
-
-  return(<div>
-    <div style={{display:"flex",background:T.bgCard,borderRadius:"12px",padding:"3px",marginBottom:"16px",border:`1px solid ${T.bgCardBorder}`}}>
-      {["friends","battles","add"].map(t=>(
-        <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"8px",background:tab===t?T.accent:"transparent",border:"none",borderRadius:"8px",color:tab===t?T.accentText:T.textSub,fontWeight:600,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-          {t==="friends"?`Amigos${pending.length>0?` (${pending.length})`:""}`:t==="battles"?"Batalhas":"+ Adicionar"}
-        </button>
-      ))}
-    </div>
-
-    {tab==="friends"&&(<div>
-      {pending.length>0&&(<>
-        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS PENDENTES</p>
-        {pending.map(p=>(
-          <Card key={p.id} style={{border:`1px solid ${T.accent}30`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.requesterUsername||"?"}</p>
-              <button onClick={()=>acceptRequest(p.id)} style={{background:T.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Aceitar</button>
-            </div>
-          </Card>
-        ))}
-        <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
-      </>)}
-
-      {sent.length>0&&(<>
-        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px",letterSpacing:"1.5px"}}>PEDIDOS ENVIADOS</p>
-        {sent.map(p=>(
-          <Card key={p.id} style={{border:`1px solid ${T.textMuted}20`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                <div style={{width:"32px",height:"32px",background:`${T.accent}15`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>🍑</div>
-                <p style={{color:T.text,fontSize:"13px",fontWeight:600,margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{p.receiverUsername||"?"}</p>
-              </div>
-              <span style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>Aguardando...</span>
-            </div>
-          </Card>
-        ))}
-        <div style={{height:"1px",background:T.divider,margin:"8px 0 16px"}}/>
-      </>)}
-
-      {friends.length===0&&sent.length===0&&pending.length===0?(
-        <div style={{textAlign:"center",padding:"40px 20px"}}>
-          <p style={{fontSize:"40px",marginBottom:"12px"}}>👯</p>
-          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Ainda sem amigos.<br/>Adicione alguém na aba "+ Adicionar"!</p>
-        </div>
-      ):friends.map(f=>(
-        <Card key={f.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-              <div style={{width:"36px",height:"36px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px"}}>🍑</div>
-              <p style={{color:T.text,fontWeight:700,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{f.username}</p>
-            </div>
-            <button onClick={()=>setSelectedFriend(f)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"8px",color:T.accent,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>⚔️ Desafiar</button>
-          </div>
-        </Card>
-      ))}
-    </div>)}
-
-    {tab==="add"&&(<div>
-      <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",marginBottom:"8px",letterSpacing:"1.5px"}}>BUSCAR POR EMAIL</p>
-      <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
-        <input placeholder="email@exemplo.com" value={searchEmail} onChange={e=>setSearchEmail(e.target.value)}
-          style={{flex:1,background:T.inputBg,border:`1px solid ${T.inputBorder}`,borderRadius:"10px",color:T.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"}}/>
-        <button onClick={searchUser} disabled={searching} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>
-          {searching?"...":"Buscar"}
-        </button>
-      </div>
-
-      {searchResult&&searchResult!=="not_found"&&(
-        <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <p style={{color:T.text,fontWeight:600,fontSize:"14px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{searchResult.username}</p>
-              <p style={{color:T.textMuted,fontSize:"12px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{searchResult.email}</p>
-            </div>
-            <button onClick={()=>sendRequest(searchResult.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Adicionar 🍑</button>
-          </div>
-        </Card>
-      )}
-
-      {searchResult==="not_found"&&<p style={{color:T.textMuted,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:"16px"}}>Usuário não encontrado 😕</p>}
-
-      {suggestions.length>0&&!searchResult&&(<>
-        <p style={{color:T.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif",margin:"8px 0",letterSpacing:"1.5px"}}>USUÁRIOS NO PUMPI</p>
-        {suggestions.map(s=>(
-          <Card key={s.id}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                <div style={{width:"32px",height:"32px",background:`${T.accent}20`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>🍑</div>
-                <div>
-                  <p style={{color:T.text,fontWeight:600,fontSize:"13px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>@{s.username}</p>
-                  <p style={{color:T.textMuted,fontSize:"11px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{s.email}</p>
-                </div>
-              </div>
-              <button onClick={()=>sendRequest(s.id)} style={{background:T.accent,border:"none",borderRadius:"10px",color:T.accentText,fontWeight:700,fontSize:"12px",padding:"7px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Add</button>
-            </div>
-          </Card>
-        ))}
-      </>)}
-    </div>)}
-
-    {tab==="battles"&&(<div>
-      <Card style={{border:`1px solid ${T.accent}30`,marginBottom:"16px"}}>
-        <p style={{color:T.textMuted,fontSize:"10px",letterSpacing:"1.5px",fontFamily:"'DM Sans',sans-serif",margin:"0 0 8px"}}>MEU STATUS</p>
-        <div style={{display:"flex",gap:"16px"}}>
-          <div><p style={{color:T.accent,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myStreak()}🔥</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>streak</p></div>
-          <div><p style={{color:"#e879f9",fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{myLower}🍑</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>lower total</p></div>
-          <div><p style={{color:T.green,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{sessions.filter(s=>s.status==="done").length}💪</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>treinos</p></div>
-        </div>
-      </Card>
-
-      {battles.length===0?(
-        <div style={{textAlign:"center",padding:"40px 20px"}}>
-          <p style={{fontSize:"40px",marginBottom:"12px"}}>⚔️</p>
-          <p style={{color:T.textSub,fontSize:"14px",fontFamily:"'DM Sans',sans-serif"}}>Nenhuma batalha ativa.<br/>Desafie uma amiga!</p>
-        </div>
-      ):battles.map(b=>(
-        <Card key={b.id} style={{border:`1px solid ${T.accent}25`}}>
-          <p style={{color:T.accent,fontSize:"12px",fontWeight:700,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif"}}>
-            {b.type==="streak"?"🔥 Batalha de Streak":b.type==="lower"?"🍑 Batalha do Fundão":"💪 Batalha Total"}
-          </p>
-          <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Termina em {new Date(b.ends_at).toLocaleDateString("pt-BR")}</p>
-        </Card>
-      ))}
-    </div>)}
-
-    {selectedFriend&&(
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={()=>setSelectedFriend(null)}>
-        <div style={{background:T.modalBg,border:`1px solid ${T.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px"}} onClick={e=>e.stopPropagation()}>
-          <div style={{width:"36px",height:"4px",background:`${T.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
-          <p style={{color:T.text,fontSize:"16px",fontWeight:700,fontFamily:"'DM Sans',sans-serif",marginBottom:"16px"}}>⚔️ Desafiar @{selectedFriend.username}</p>
-          {battleTypes.map(bt=>(
-            <button key={bt.id} onClick={()=>createBattle(selectedFriend.id,bt.id)} style={{width:"100%",background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",padding:"14px",marginBottom:"8px",cursor:"pointer",textAlign:"left"}}>
-              <p style={{color:T.text,fontSize:"13px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>{bt.label}</p>
-              <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{bt.desc}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
-  </div>);
-}
-
-function HistoryModal({machine,history,theme,onClose}){
-  const sorted=[...history].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const max=history.reduce((m,h)=>Math.max(m,parseFloat(h.weight)||0),0);
-  const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
-  const fmtF=iso=>new Date(iso).toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"});
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(6px)"}} onClick={onClose}>
-      <div style={{background:theme.modalBg,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"75vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:"36px",height:"4px",background:`${theme.accent}40`,borderRadius:"2px",margin:"0 auto 20px"}}/>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"20px"}}>
-          <div>
-            <p style={{color:theme.textSub,fontSize:"10px",letterSpacing:"2px",textTransform:"uppercase",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Histórico de carga</p>
-            <h3 style={{color:theme.text,fontSize:"18px",fontWeight:700,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{machine}</h3>
-          </div>
-          {max>0&&<div style={{textAlign:"right"}}><p style={{color:theme.textSub,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>MÁXIMO</p><p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace"}}>{max}kg</p></div>}
-        </div>
-        {history.length>1&&(()=>{
-          const cd=[...history].sort((a,b)=>new Date(a.date)-new Date(b.date));
-          const mw=Math.max(...cd.map(h=>parseFloat(h.weight)||0));
-          return(<div style={{marginBottom:"20px",padding:"14px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`}}>
-            <p style={{color:theme.textMuted,fontSize:"10px",letterSpacing:"1.5px",marginBottom:"10px",fontFamily:"'DM Sans',sans-serif"}}>EVOLUÇÃO</p>
-            <div style={{display:"flex",alignItems:"flex-end",gap:"5px",height:"56px"}}>
-              {cd.map((h,i)=>{const pct=mw>0?((parseFloat(h.weight)||0)/mw)*100:0;return(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:"3px"}}><div style={{width:"100%",height:`${Math.max(pct*.56,3)}px`,background:i===cd.length-1?theme.accent:`${theme.accent}40`,borderRadius:"3px 3px 0 0"}}/><span style={{color:theme.textMuted,fontSize:"8px",fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{fmt(h.date)}</span></div>);})}
-            </div>
-          </div>);
-        })()}
-        <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-          {sorted.map((h,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",background:theme.bgCard,borderRadius:"10px",border:`1px solid ${theme.bgCardBorder}`}}>
-              <div>
-                <p style={{color:theme.text,fontSize:"16px",fontWeight:600,margin:0,fontFamily:"'DM Mono',monospace"}}>{h.weight}kg</p>
-                <p style={{color:theme.textSub,fontSize:"11px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>
-                  {h.series?`${h.series}x · `:""}
-                  {h.reps?`${h.reps} reps`:""}
-                  {h.rp?` · RP ${h.rp}`:""}
-                </p>
-              </div>
-              <div style={{textAlign:"right"}}><p style={{color:theme.textSub,fontSize:"12px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{fmtF(h.date)}</p>{i===0&&<span style={{background:`${theme.accent}20`,color:theme.accent,fontSize:"10px",padding:"2px 7px",borderRadius:"5px"}}>atual</span>}</div>
-            </div>
-          ))}
-        </div>
-        {history.length===0&&<p style={{color:theme.textMuted,textAlign:"center",fontSize:"13px",padding:"30px 0",fontFamily:"'DM Sans',sans-serif"}}>Sem histórico ainda.</p>}
-      </div>
-    </div>
-  );
-}
-
-function ExerciseRow({exercise,onChange,onDelete,onShowHistory,theme,readonly}){
-  const [localWeight,setLocalWeight]=useState(exercise.weight||"");
-  const hasH=(exercise.weightHistory||[]).length>0;
-  const last=hasH?exercise.weightHistory[exercise.weightHistory.length-1]:null;
-  const fmt=iso=>new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
-
-  useEffect(()=>{setLocalWeight(exercise.weight||"");},[exercise.id]);
-
-  const handleWeightChange=(val)=>{
-    setLocalWeight(val);
-    onChange({...exercise,weight:val});
-  };
-
-  const handleWeightBlur=(val)=>{
-    if(val&&val!==(exercise.weightHistory?.[exercise.weightHistory.length-1]?.weight||"")){
-      const entry={weight:val,reps:exercise.reps,rp:exercise.rp,series:exercise.series,date:new Date().toISOString()};
-      onChange({...exercise,weight:val,weightHistory:[...(exercise.weightHistory||[]),entry]});
-    }
-  };
-
-  return(
-    <div style={{padding:"10px",background:theme.bgCard,borderRadius:"12px",border:`1px solid ${theme.bgCardBorder}`,marginBottom:"8px",opacity:readonly?0.72:1}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",alignItems:"center"}}>
-        <div>
-          <span style={{color:theme.text,fontSize:"13px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{exercise.machine}</span>
-          {last&&<p style={{color:theme.textMuted,fontSize:"10px",margin:"2px 0 0",fontFamily:"'DM Sans',sans-serif"}}>atualizado {fmt(last.date)}</p>}
-        </div>
-        <input type="text" placeholder="kg"
-          value={localWeight}
-          disabled={readonly}
-          onChange={e=>!readonly&&handleWeightChange(e.target.value)}
-          onBlur={e=>!readonly&&handleWeightBlur(e.target.value)}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.accent,fontSize:"13px",padding:"6px 5px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
-        />
-        <input type="number" placeholder="Sér" value={exercise.series||""} disabled={readonly}
-          onChange={e=>!readonly&&onChange({...exercise,series:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
-        />
-        <select value={exercise.reps||""} disabled={readonly}
-          onChange={e=>!readonly&&onChange({...exercise,reps:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.blue,fontSize:"11px",padding:"6px 2px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
-        >
-          <option value="">rep</option>
-          {repOptions.map(r=><option key={r} value={r}>{r}</option>)}
-        </select>
-        <input type="number" placeholder="RP" value={exercise.rp||""} disabled={readonly}
-          onChange={e=>!readonly&&onChange({...exercise,rp:e.target.value})}
-          style={{background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"7px",color:theme.green,fontSize:"13px",padding:"6px 4px",width:"100%",textAlign:"center",fontFamily:"'DM Mono',monospace",outline:"none"}}
-        />
-        <button onClick={onDelete} disabled={readonly} style={{background:"rgba(255,80,80,0.1)",border:"1px solid rgba(255,80,80,0.2)",borderRadius:"7px",color:"#ff6b6b",fontSize:"15px",cursor:readonly?"default":"pointer",padding:"4px 0",width:"36px",display:"flex",alignItems:"center",justifyContent:"center",opacity:readonly?0.4:1}}>×</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 50px 70px 55px 36px",gap:"5px",padding:"3px 0 0"}}>
-        {["","Peso","Sér","Reps","RP",""].map((h,i)=>(
-          <span key={i} style={{color:theme.textMuted,fontSize:"9px",textTransform:"uppercase",letterSpacing:"1px",textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
-        ))}
-      </div>
-      <button onClick={onShowHistory} style={{marginTop:"8px",width:"100%",background:hasH?`${theme.accent}10`:"transparent",border:hasH?`1px solid ${theme.accent}25`:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",padding:"6px",color:hasH?theme.accent:theme.textMuted,fontSize:"11px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:"5px"}}>
-        <span>📈</span>{hasH?`Ver evolução · ${(exercise.weightHistory||[]).length} registros`:"Sem histórico ainda"}
-      </button>
-    </div>
-  );
-}
-
-function AddMachineModal({group,onAdd,onClose,existingMachines,theme}){
-  const [custom,setCustom]=useState("");
-  const suggestions=defaultMachines[group].filter(m=>!existingMachines.includes(m));
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(4px)"}} onClick={onClose}>
-      <div style={{background:theme.modalBg,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:"480px",maxHeight:"70vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:"36px",height:"4px",background:`${theme.accent}50`,borderRadius:"2px",margin:"0 auto 20px"}}/>
-        <p style={{color:theme.textSub,fontSize:"11px",textTransform:"uppercase",letterSpacing:"2px",marginBottom:"14px",fontFamily:"'DM Sans',sans-serif"}}>Adicionar · {group==="lower"?"Lower Body":"Upper Body"}</p>
-        <div style={{display:"flex",gap:"8px",marginBottom:"16px"}}>
-          <input placeholder="Nome personalizado..." value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&custom.trim()&&onAdd(custom.trim())}
-            style={{flex:1,background:theme.inputBg,border:`1px solid ${theme.inputBorder}`,borderRadius:"10px",color:theme.text,fontSize:"14px",padding:"10px 14px",fontFamily:"'DM Sans',sans-serif",outline:"none"}}
-          />
-          <button onClick={()=>custom.trim()&&onAdd(custom.trim())} style={{background:theme.accent,border:"none",borderRadius:"10px",color:theme.accentText,fontWeight:700,fontSize:"14px",padding:"10px 16px",cursor:"pointer"}}>+</button>
-        </div>
-        {suggestions.length>0&&(<><p style={{color:theme.textMuted,fontSize:"11px",marginBottom:"10px",fontFamily:"'DM Sans',sans-serif"}}>SUGESTÕES</p><div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>{suggestions.map(s=><button key={s} onClick={()=>onAdd(s)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"20px",color:theme.textSub,fontSize:"12px",padding:"6px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}</button>)}</div></>)}
-      </div>
-    </div>
-  );
-}
-
-function SessionView({session,onUpdate,onSave,theme,onFinish,data}){
-  const [modal,setModal]=useState(null);
-  const [histModal,setHistModal]=useState(null);
-  const [editMode,setEditMode]=useState(false);
-  const readonly=session.status==="done"&&!editMode;
-  const isActive=session.status==="active";
-  const isManualReopened=session.manual&&session.status==="active"&&session.finishedAt===null;
-  const timer=useTimer(session.startedAt,isActive&&!isManualReopened);
-  const dur=calcDuration(session.startedAt,session.finishedAt);
-
-  const addEx=(group,machine)=>{
-    const allExs=(data||[]).flatMap(s=>[...(s.lower||[]),...(s.upper||[])]).filter(e=>e.machine===machine);
-    const allHist=allExs.flatMap(e=>e.weightHistory||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const lastEntry=allHist[0];
-    onUpdate({...session,[group]:[...(session[group]||[]),{id:Date.now(),machine,weight:lastEntry?.weight||"",rp:lastEntry?.rp||"",reps:lastEntry?.reps||"",series:lastEntry?.series||"",weightHistory:[]}]});
-    setModal(null);
-  };
-  const updEx=(group,id,d)=>onUpdate({...session,[group]:session[group].map(e=>e.id===id?{...e,...d}:e)});
-  const delEx=(group,id)=>onUpdate({...session,[group]:session[group].filter(e=>e.id!==id)});
-  const handleSaveEdit=()=>{ onSave(session); setEditMode(false); };
-  const groups=[{key:"lower",label:"Lower Body",emoji:"🦵",color:theme.green},{key:"upper",label:"Upper Body",emoji:"💪",color:theme.blue}];
-  const histEx=histModal?[...(session.lower||[]),...(session.upper||[])].find(e=>e.id===histModal):null;
-
-  return(
-    <div>
-      <div style={{borderRadius:"16px",marginBottom:"20px",border:session.status==="done"?`1px solid ${theme.green}40`:session.status==="active"?`1px solid ${theme.accent}35`:`1px solid ${theme.bgCardBorder}`,background:session.status==="done"?`${theme.green}10`:session.status==="active"?`${theme.accent}08`:theme.bgCard}}>
-        <div style={{padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-            <span style={{fontSize:"22px"}}>{session.status==="done"?"✅":session.status==="active"?"🔥":"⏸️"}</span>
-            <div>
-              <p style={{color:session.status==="done"?theme.green:session.status==="active"?theme.accent:theme.textSub,fontSize:"11px",fontWeight:700,margin:0,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"1.5px"}}>
-                {session.status==="done"?(editMode?"Modo Edição ✏️":"Treino Finalizado"):session.status==="active"?"Em Andamento":"Não Iniciado"}
-              </p>
-              {isActive&&!isManualReopened&&<p style={{color:theme.accent,fontSize:"22px",fontWeight:700,margin:"2px 0 0",fontFamily:"'DM Mono',monospace",letterSpacing:"2px"}}>{timer}</p>}
-              {isActive&&isManualReopened&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Edite e finalize quando quiser</p>}
-              {session.status==="done"&&dur&&!editMode&&<p style={{color:theme.textSub,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Duração: <strong>{dur}</strong></p>}
-              {session.status==="pending"&&<p style={{color:theme.textMuted,fontSize:"12px",margin:"3px 0 0",fontFamily:"'DM Sans',sans-serif"}}>Toque em Iniciar quando estiver pronto</p>}
-            </div>
-          </div>
-          <div style={{display:"flex",gap:"6px"}}>
-            {session.status==="pending"&&<button onClick={()=>onUpdate({...session,status:"active",startedAt:Date.now()})} style={{background:theme.accent,border:"none",borderRadius:"12px",color:theme.accentText,fontWeight:800,fontSize:"14px",padding:"12px 20px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",boxShadow:`0 4px 16px ${theme.accent}40`}}>▶ Iniciar</button>}
-            {session.status==="done"&&session.manual&&(
-              editMode
-                ?<button onClick={handleSaveEdit} style={{background:theme.green,border:"none",borderRadius:"10px",color:"#fff",fontWeight:700,fontSize:"12px",padding:"8px 14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✓ Salvar</button>
-                :<button onClick={()=>setEditMode(true)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>✏️ Editar</button>
-            )}
-            {session.status==="done"&&!session.manual&&<button onClick={()=>onUpdate({
-             ...session,
-             status:"active",
-             finishedAt:null})} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"10px",color:theme.textSub,fontSize:"12px",padding:"8px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>↩ Reabrir</button>}
-          </div>
-        </div>
-      </div>
-      {groups.map(g=>(
-        <div key={g.key} style={{marginBottom:"24px"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-              <span style={{fontSize:"15px"}}>{g.emoji}</span>
-              <span style={{color:g.color,fontSize:"12px",fontWeight:700,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif"}}>{g.label}</span>
-              <span style={{color:theme.textMuted,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>({session[g.key]?.length||0})</span>
-            </div>
-            {!readonly&&<button onClick={()=>setModal(g.key)} style={{background:theme.bgCard,border:`1px solid ${theme.bgCardBorder}`,borderRadius:"8px",color:theme.textSub,fontSize:"12px",padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Máquina</button>}
-          </div>
-          {(session[g.key]||[]).length===0?(
-            <div style={{textAlign:"center",padding:"18px",color:theme.textMuted,fontSize:"12px",fontFamily:"'DM Sans',sans-serif",border:`1px dashed ${theme.bgCardBorder}`,borderRadius:"10px"}}>
-              {readonly?"Nenhum exercício registrado":"Adicione uma máquina"}
-            </div>
-          ):(session[g.key]||[]).map(ex=>(
-            <ExerciseRow key={ex.id} exercise={ex} theme={theme} readonly={readonly}
-              onChange={d=>updEx(g.key,ex.id,d)}
-              onDelete={()=>delEx(g.key,ex.id)}
-              onShowHistory={()=>setHistModal(ex.id)}
-            />
-          ))}
-        </div>
-      ))}
-      {modal&&<AddMachineModal group={modal} theme={theme} onAdd={m=>addEx(modal,m)} onClose={()=>setModal(null)} existingMachines={(session[modal]||[]).map(e=>e.machine)}/>}
-      {histEx&&<HistoryModal machine={histEx.machine} history={histEx.weightHistory||[]} theme={theme} onClose={()=>setHistModal(null)}/>}
-    </div>
-  );
-}
-
-function MetricsView({sessions,theme}){
-  const T=theme;
-  const doneSessions=sessions.filter(s=>s.status==="done");
-  const allExercises=sessions.flatMap(s=>[...(s.lower||[]).map(e=>({...e,group:"lower",date:s.date})),...(s.upper||[]).map(e=>({...e,group:"upper",date:s.date}))]);
-  const totalLower=sessions.reduce((a,s)=>a+(s.lower?.length||0),0);
-  const totalUpper=sessions.reduce((a,s)=>a+(s.upper?.length||0),0);
-  const totalSessions=sessions.length;
-  const totalDone=doneSessions.length;
-  const totalKgLifted=allExercises.reduce((acc,ex)=>acc+(ex.weightHistory||[]).reduce((a,h)=>a+(parseFloat(h.weight)||0),0),0);
-  const sessionDays=[...new Set(doneSessions.map(s=>s.date.slice(0,10)))].sort();
-  let bestStreak=0,cur=0;
-  for(let i=0;i<sessionDays.length;i++){cur=i===0?1:(()=>{const d=(new Date(sessionDays[i])-new Date(sessionDays[i-1]))/(1000*60*60*24);return d===1?cur+1:1;})();if(cur>bestStreak)bestStreak=cur;}
-  let streak=0;
-  if(sessionDays.length){const today=new Date().toISOString().slice(0,10);const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);const last=sessionDays[sessionDays.length-1];if(last===today||last===yesterday){streak=1;for(let i=sessionDays.length-2;i>=0;i--){const d=(new Date(sessionDays[i+1])-new Date(sessionDays[i]))/(1000*60*60*24);if(d===1)streak++;else break;}}}
-  const durations=doneSessions.filter(s=>s.startedAt&&s.finishedAt).map(s=>Math.floor((s.finishedAt-s.startedAt)/60000));
-  const avgDur=durations.length?Math.round(durations.reduce((a,b)=>a+b,0)/durations.length):0;
-  const lowerPct=(totalLower+totalUpper)>0?Math.round(totalLower/(totalLower+totalUpper)*100):50;
-  const upperPct=100-lowerPct;
-  const machineCount={};
-  allExercises.forEach(e=>{machineCount[e.machine]=(machineCount[e.machine]||0)+1;});
-  const topMachines=Object.entries(machineCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const machinePRs={};
-  allExercises.forEach(ex=>{const best=Math.max(...(ex.weightHistory||[]).map(h=>parseFloat(h.weight)||0),0);if(best>0)machinePRs[ex.machine]=Math.max(machinePRs[ex.machine]||0,best);});
-  const coiceCount=allExercises.filter(e=>e.machine.toLowerCase().includes("abdutora")).length;
-  const coiceLevels=[{min:0,label:"Potro 🐴"},{min:5,label:"Égua Treinada 🐎"},{min:15,label:"Cavala Braba 🌪️"},{min:30,label:"Égua Lendária 👑"}];
-  const coiceLevel=[...coiceLevels].reverse().find(l=>coiceCount>=l.min)||coiceLevels[0];
-  const abCount=allExercises.filter(e=>e.machine.toLowerCase().includes("adutora")).length;
-  const abLevels=[{min:0,label:"Fechadinha 🌸"},{min:5,label:"Abrindo o Jogo 🦋"},{min:15,label:"Borboleta Livre 🌺"},{min:30,label:"Rainha do Abre & Fecha 👸"}];
-  const abLevel=[...abLevels].reverse().find(l=>abCount>=l.min)||abLevels[0];
-  const bundaCount=totalLower;
-  const bundaLevels=[{min:0,label:"Bunda Newbie 🌱"},{min:10,label:"Bunda Promissora 🌿"},{min:25,label:"Bunda em Construção 🧱"},{min:45,label:"Bunda Notável 🔥"},{min:70,label:"Bunda Respeitável 👏"},{min:100,label:"Bunda Lendária 👑"},{min:150,label:"BUNDA NA NUCA 🚀"}];
-  const bundaLevel=[...bundaLevels].reverse().find(l=>bundaCount>=l.min)||bundaLevels[0];
-  const nextBunda=bundaLevels.find(l=>bundaCount<l.min)||bundaLevels[bundaLevels.length-1];
-  const bundaPct=Math.min(100,Math.round((bundaCount/(nextBunda.min||1))*100));
-  const kgLevels=[{min:0,label:"Levantou um Chihuahua 🐕"},{min:500,label:"Levantou um Panda 🐼"},{min:2000,label:"Levantou uma Vaca 🐄"},{min:5000,label:"Levantou um Elefante Baby 🐘"},{min:15000,label:"Levantou um Carro 🚗"},{min:50000,label:"Levantou um Caminhão 🚛"}];
-  const kgLevel=[...kgLevels].reverse().find(l=>totalKgLifted>=l.min)||kgLevels[0];
-  const ratLevels=[{min:0,label:"Visitante Ocasional 🚶"},{min:3,label:"Frequentadora 🏃"},{min:7,label:"Academia Rat 🐀"},{min:14,label:"Viciada no Ferro 💊"},{min:21,label:"A Gym É Minha Casa 🏠"}];
-  const ratLevel=[...ratLevels].reverse().find(l=>streak>=l.min)||ratLevels[0];
-  const Bar=({pct,color,h=8})=>(<div style={{background:T.bgCard,borderRadius:"99px",height:`${h}px`,overflow:"hidden",border:`1px solid ${T.bgCardBorder}`}}><div style={{height:"100%",width:`${Math.min(100,pct)}%`,background:color,borderRadius:"99px",transition:"width .6s ease"}}/></div>);
-  const Card=({children,style={}})=>(<div style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"12px",...style}}>{children}</div>);
-  const Label=({children,color})=>(<span style={{background:`${color||T.accent}20`,color:color||T.accent,fontSize:"11px",fontWeight:700,padding:"3px 10px",borderRadius:"20px",fontFamily:"'DM Sans',sans-serif"}}>{children}</span>);
-  if(sessions.length===0) return(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{fontSize:"48px",marginBottom:"16px"}}>📊</div><p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Faça pelo menos um treino<br/>para ver suas métricas!</p></div>);
-  return(<div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",marginBottom:"12px"}}>
-      {[{label:"Treinos",value:totalSessions,sub:`${totalDone} finalizados`},{label:"Exercícios",value:totalLower+totalUpper,sub:`${totalLower}L · ${totalUpper}U`},{label:"Streak",value:`${streak}🔥`,sub:`melhor: ${bestStreak} dias`}].map((s,i)=>(
-        <div key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"14px",padding:"14px 10px",textAlign:"center"}}>
-          <p style={{color:T.accent,fontSize:"22px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{s.value}</p>
-          <p style={{color:T.text,fontSize:"11px",fontWeight:600,margin:"4px 0 2px",fontFamily:"'DM Sans',sans-serif"}}>{s.label}</p>
-          <p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>{s.sub}</p>
-        </div>
-      ))}
-    </div>
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
-        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>Upper vs Lower</p>
-        <div style={{display:"flex",gap:"8px"}}><Label color={T.green}>🦵 {lowerPct}%</Label><Label color={T.blue}>💪 {upperPct}%</Label></div>
-      </div>
-      <div style={{display:"flex",gap:"4px",height:"28px",borderRadius:"10px",overflow:"hidden"}}>
-        <div style={{flex:lowerPct,background:T.green,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:"11px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{lowerPct>10?"Lower":""}</span></div>
-        <div style={{flex:upperPct,background:T.blue,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#fff",fontSize:"11px",fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>{upperPct>10?"Upper":""}</span></div>
-      </div>
-      <p style={{color:T.textMuted,fontSize:"11px",margin:"10px 0 0",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>{lowerPct>upperPct?"Foco total no fundão 🍑":"Parte de cima tá dominando 💪"}</p>
-    </Card>
-    <Card style={{border:`1px solid #e879f930`}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"12px"}}>
-        <div><p style={{color:"#e879f9",fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>🍑 Meta Bumbum na Nuca</p><p style={{color:T.text,fontSize:"18px",fontWeight:800,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{bundaLevel.label}</p></div>
-        <div style={{textAlign:"right"}}><p style={{color:"#e879f9",fontSize:"24px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{bundaCount}</p><p style={{color:T.textMuted,fontSize:"10px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>exercícios lower</p></div>
-      </div>
-      <Bar pct={bundaPct} color="#e879f9" h={10}/>
-      <p style={{color:T.textMuted,fontSize:"11px",margin:"8px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{bundaCount<nextBunda.min?`Faltam ${nextBunda.min-bundaCount} para: ${nextBunda.label}`:"🎉 Nível máximo!"}</p>
-    </Card>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
-      <div style={{background:T.bgCard,border:`1px solid #ff7eb330`,borderRadius:"14px",padding:"14px"}}>
-        <p style={{color:"#ff7eb3",fontSize:"20px",margin:"0 0 4px"}}>🐴</p>
-        <p style={{color:T.text,fontSize:"12px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>Coice da Égua</p>
-        <p style={{color:"#ff7eb3",fontSize:"11px",fontWeight:600,margin:"0 0 6px",fontFamily:"'DM Sans',sans-serif"}}>{coiceLevel.label}</p>
-        <p style={{color:T.textMuted,fontSize:"11px",margin:"0 0 8px",fontFamily:"'DM Sans',sans-serif"}}>{coiceCount} abdutoras</p>
-        <Bar pct={Math.min(100,(coiceCount/30)*100)} color="#ff7eb3" h={6}/>
-      </div>
-      <div style={{background:T.bgCard,border:`1px solid #a78bfa30`,borderRadius:"14px",padding:"14px"}}>
-        <p style={{color:"#a78bfa",fontSize:"20px",margin:"0 0 4px"}}>🦋</p>
-        <p style={{color:T.text,fontSize:"12px",fontWeight:700,margin:"0 0 2px",fontFamily:"'DM Sans',sans-serif"}}>Abre & Fecha</p>
-        <p style={{color:"#a78bfa",fontSize:"11px",fontWeight:600,margin:"0 0 6px",fontFamily:"'DM Sans',sans-serif"}}>{abLevel.label}</p>
-        <p style={{color:T.textMuted,fontSize:"11px",margin:"0 0 8px",fontFamily:"'DM Sans',sans-serif"}}>{abCount} adutoras</p>
-        <Bar pct={Math.min(100,(abCount/30)*100)} color="#a78bfa" h={6}/>
-      </div>
-    </div>
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>⚡ Força Total</p>
-        <p style={{color:T.accent,fontSize:"20px",fontWeight:800,margin:0,fontFamily:"'DM Mono',monospace"}}>{totalKgLifted.toLocaleString("pt-BR")} kg</p>
-      </div>
-      <p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:"0 0 4px",fontFamily:"'DM Sans',sans-serif"}}>{kgLevel.label}</p>
-      <p style={{color:T.textMuted,fontSize:"11px",margin:0,fontFamily:"'DM Sans',sans-serif"}}>Total acumulado de kg levantados</p>
-    </Card>
-    <Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-        <p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>📅 Constância</p>
-        <Label>{ratLevel.label}</Label>
-      </div>
-      <p style={{color:T.textMuted,fontSize:"11px",margin:"4px 0 10px",fontFamily:"'DM Sans',sans-serif"}}>{streak} dias seguidos · melhor: {bestStreak} dias</p>
-      <Bar pct={Math.min(100,(streak/21)*100)} color={T.accent} h={8}/>
-    </Card>
-    {avgDur>0&&(<Card><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:0}}>⏱ Tempo Médio</p><p style={{color:T.text,fontSize:"14px",fontWeight:600,margin:"4px 0 0",fontFamily:"'DM Sans',sans-serif"}}>{avgDur>=60?`${Math.floor(avgDur/60)}h ${avgDur%60}min`:`${avgDur} min`} por treino</p></div><p style={{color:T.accent,fontSize:"32px",margin:0}}>{avgDur<30?"⚡":avgDur<60?"🔥":"🦾"}</p></div></Card>)}
-    {topMachines.length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🏆 Suas Favoritas</p>{topMachines.map(([name,count],i)=>{const p=getPersona(name);const pct=Math.round((count/topMachines[0][1])*100);return(<div key={name} style={{marginBottom:"10px"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"4px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontWeight:500,fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span>{i===0&&<span style={{background:`${T.accent}20`,color:T.accent,fontSize:"9px",padding:"1px 6px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>favorita</span>}</div><span style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Mono',monospace"}}>{count}x</span></div><Bar pct={pct} color={p.color} h={6}/></div>);})}</Card>)}
-    {Object.keys(machinePRs).length>0&&(<Card><p style={{color:T.textSub,fontSize:"11px",fontWeight:700,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'DM Sans',sans-serif",margin:"0 0 12px"}}>🥇 Meus PRs</p><div style={{display:"flex",flexDirection:"column",gap:"6px"}}>{Object.entries(machinePRs).sort((a,b)=>b[1]-a[1]).map(([name,kg])=>{const p=getPersona(name);return(<div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:`${p.color}10`,border:`1px solid ${p.color}25`,borderRadius:"10px"}}><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontSize:"14px"}}>{p.emoji}</span><span style={{color:T.text,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{p.name}</span></div><span style={{color:p.color,fontSize:"14px",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>{kg}kg</span></div>);})}</div></Card>)}
-  </div>);
-}
-
-function ProfileView({ profile, sessions, theme, onLogout, user, syncStatus }) {
-  const T = theme;
-  const [feedbackType, setFeedbackType] = useState("suggestion");
-  const [feedbackText, setFeedbackText] = useState("");
-  const [sendingFeedback, setSendingFeedback] = useState(false);
-
-  const downloadCSV = () => {
-    const rows = [];
-
-    sessions.forEach((s) => {
-      [...(s.lower || []), ...(s.upper || [])].forEach((ex) => {
-        rows.push({
-          date: s.date?.slice(0, 10),
-          status: s.status,
-          group: (s.lower || []).includes(ex) ? "lower" : "upper",
-          machine: ex.machine || "",
-          weight: ex.weight || "",
-          series: ex.series || "",
-          reps: ex.reps || "",
-          rp: ex.rp || "",
-          manual: s.manual ? "yes" : "no",
-        });
-      });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) { setUser(session.user); await loadData(session.user.id); }
+      if (event === "SIGNED_OUT") { setUser(null); setProfile(null); setData({ sessions: [] }); setPendingCount(0); }
     });
 
-    const header = Object.keys(
-      rows[0] || {
-        date: "",
-        status: "",
-        group: "",
-        machine: "",
-        weight: "",
-        series: "",
-        reps: "",
-        rp: "",
-        manual: "",
-      }
-    );
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, []);
 
-    const csv = [
-      header.join(","),
-      ...rows.map((row) =>
-        header
-          .map((h) => `"${String(row[h] ?? "").replaceAll('"', '""')}"`)
-          .join(",")
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "pumpi_treinos.csv";
-    a.click();
-
-    URL.revokeObjectURL(url);
-  };
-
-  const changePassword = async () => {
-    if (!profile?.email) {
-      alert("Email não encontrado no perfil.");
-      return;
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
-      redirectTo: "https://pumpi-two.vercel.app/confirmed.html",
-    });
-
-    if (error) alert("Erro ao enviar email: " + error.message);
-    else alert("Email para mudar senha enviado 🍑");
-  };
-
-  const sendFeedback = async () => {
-    if (!feedbackText.trim()) {
-      alert("Escreva sua mensagem primeiro 🍑");
-      return;
-    }
-
-    setSendingFeedback(true);
-
-    const uid = user?.id || profile?.id;
-
-    const { error } = await supabase.from("suggestions").insert({
-      user_id: uid,
-      type: feedbackType,
-      message: feedbackText.trim(),
-    });
-
-    setSendingFeedback(false);
-
-    if (error) {
-      alert("Erro ao enviar: " + error.message);
-      return;
-    }
-
-    setFeedbackText("");
-    setFeedbackType("suggestion");
-    alert("Mensagem enviada! Obrigada pela sugestão 🍑");
-  };
-
-  return (
-    <div>
-      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <h2 style={{ color: T.text }}>@{profile?.username}</h2>
-        <p style={{ color: T.textSub }}>{profile?.email}</p>
-      </div>
-
-      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <p style={{ color: T.text, fontWeight: 800, marginBottom: "8px" }}>
-          ☁️ Sincronização
-        </p>
-
-        <p
-          style={{
-            color:
-              syncStatus === "saved"
-                ? T.green
-                : syncStatus === "error"
-                ? T.danger
-                : T.accent,
-            fontWeight: 700,
-            margin: 0,
-          }}
-        >
-          {syncStatus === "saving" && "🍑 Salvando..."}
-          {syncStatus === "saved" && "🟢 Tudo sincronizado"}
-          {syncStatus === "error" && "🔴 Offline / erro ao sincronizar"}
-          {!syncStatus && "🟢 Tudo sincronizado"}
-        </p>
-      </div>
-
-      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <p style={{ color: T.text }}>🏋️ Treinos: {sessions.length}</p>
-        <p style={{ color: T.text }}>
-          ✅ Finalizados: {sessions.filter((s) => s.status === "done").length}
-        </p>
-      </div>
-
-      <div style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "20px", marginBottom: "12px" }}>
-        <p style={{ color: T.text, fontWeight: 800, marginBottom: "10px" }}>
-          💬 Suporte e sugestões
-        </p>
-
-        <select
-          value={feedbackType}
-          onChange={(e) => setFeedbackType(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: "12px",
-            border: `1px solid ${T.inputBorder}`,
-            background: T.inputBg,
-            color: T.text,
-            marginBottom: "10px",
-          }}
-        >
-          <option value="suggestion">Sugestão</option>
-          <option value="support">Suporte / problema</option>
-        </select>
-
-        <textarea
-          value={feedbackText}
-          onChange={(e) => setFeedbackText(e.target.value)}
-          placeholder="Escreva aqui..."
-          rows={4}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: "12px",
-            border: `1px solid ${T.inputBorder}`,
-            background: T.inputBg,
-            color: T.text,
-            resize: "none",
-            marginBottom: "10px",
-          }}
-        />
-
-        <button
-          onClick={sendFeedback}
-          disabled={sendingFeedback}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "none",
-            background: T.accent,
-            color: T.accentText,
-            fontWeight: 800,
-          }}
-        >
-          {sendingFeedback ? "Enviando..." : "Enviar mensagem 🍑"}
-        </button>
-      </div>
-
-      <button onClick={downloadCSV} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: "none", background: T.accent, color: T.accentText, fontWeight: 800, marginBottom: "10px" }}>
-        Baixar treinos em CSV 📥
-      </button>
-
-      <button onClick={changePassword} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: `1px solid ${T.bgCardBorder}`, background: T.bgCard, color: T.text, marginBottom: "10px" }}>
-        Mudar senha 🔐
-      </button>
-
-      <button onClick={onLogout} style={{ width: "100%", padding: "14px", borderRadius: "12px", border: "none", background: T.danger, color: "#fff" }}>
-        Sair
-      </button>
-    </div>
-  );
-}
-
-export default function Pumpi(){
-  const [data,setData]=useState({sessions:[]});
-  const [user,setUser]=useState(null);
-  const [profile,setProfile]=useState(null);
-  const [activeSession,setActiveSession]=useState(null);
-  const [tab,setTab]=useState("home");
-  const [loaded,setLoaded]=useState(false);
-  const [theme,setTheme]=useState(getTimeTheme());
-  const [celebration,setCelebration]=useState(false);
-  const [showManual,setShowManual]=useState(false);
-  const [pendingCount,setPendingCount]=useState(0);
-  const [refreshing,setRefreshing]=useState(false);
-  
-  const [syncStatus,setSyncStatus]=useState(null);
-  const [lastSync,setLastSync]=useState(null);
-  
-  const touchStartY=useRef(0);
-  const T=theme;
-  
-  const sync =
-  syncStatus === "saving"
-    ? {
-        icon: "🍑",
-        label: "Salvando...",
-        bg: "rgba(245, 158, 11, 0.14)",
-        color: "#f59e0b",
-      }
-    : syncStatus === "saved"
-    ? {
-        icon: "🟢",
-        label: "Sincronizado",
-        bg: "rgba(46, 125, 82, 0.14)",
-        color: T.green,
-      }
-    : syncStatus === "error"
-    ? {
-        icon: "🔴",
-        label: "Offline",
-        bg: "rgba(255, 80, 80, 0.14)",
-        color: T.danger,
-      }
-    : null;
-
-  useEffect(()=>{const id=setInterval(()=>setTheme(getTimeTheme()),60000);return()=>clearInterval(id);},[]);
-
-  useEffect(()=>{
-    if(!user) return;
-    const id=setInterval(()=>{
-      if(tab!=="session") loadData(user.id);
-    },5*60*1000);
-    return()=>clearInterval(id);
-  },[user,tab]);
-
-  useEffect(() => {
-  let alive = true;
-
-  const loadInitialData = async () => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!alive) return;
-
-      if (session?.user) {
-        setUser(session.user);
-        await loadData(session.user.id);
-      } else {
-        const s = localStorage.getItem(STORAGE_KEY);
-        if (s) setData(JSON.parse(s));
-      }
-    } catch (e) {
-      console.error("Load inicial falhou:", e?.message || e);
-
-      try {
-        const s = localStorage.getItem(STORAGE_KEY);
-        if (s) setData(JSON.parse(s));
-      } catch {}
-    } finally {
-      if (alive) setLoaded(true);
-    }
-  };
-
-  loadInitialData();
-
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === "SIGNED_IN" && session?.user) {
-      setUser(session.user);
-      await loadData(session.user.id);
-    }
-
-    if (event === "SIGNED_OUT") {
-      setUser(null);
-      setProfile(null);
-      setData({ sessions: [] });
-      setPendingCount(0);
-    }
-  });
-
-  return () => {
-    alive = false;
-    subscription.unsubscribe();
-  };
-}, []);
-
+  // ── Data ──────────────────────────────────────────────────
   const loadData = async (uid) => {
-  try {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", uid)
-      .maybeSingle();
-
-    if (prof) setProfile(prof);
-
-    const local = localStorage.getItem(STORAGE_KEY);
-    const localSessions = local ? JSON.parse(local).sessions || [] : [];
-
-    const deletedIds = getDeletedSessionIds();
-
-    const visibleLocalSessions = localSessions.filter(
-      (s) => !deletedIds.includes(String(s.id))
-    );
-
-    const { data: rows, error: rowsError } = await supabase
-      .from("sessions")
-      .select("*")
-      .eq("user_id", uid)
-      .order("id", { ascending: false });
-
-    if (rowsError) throw rowsError;
-
-    const remoteSessions = (rows || []).map((r) => ({
-      ...r.data,
-      id: r.id,
-      updatedAt: r.updated_at ? Date.parse(r.updated_at) : r.id,
-    }));
-
-    const nextSessions = mergeSessions(
-      remoteSessions.filter((s) => !deletedIds.includes(String(s.id))),
-      visibleLocalSessions
-    );
-
-    const sorted = sortSessions(nextSessions);
-
-    setData({ sessions: sorted });
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ sessions: sorted })
-    );
-
-    const { data: pending } = await supabase
-      .from("friendships")
-      .select("*")
-      .eq("receiver_id", uid)
-      .eq("status", "pending");
-
-    if (pending) setPendingCount(pending.length);
-  } catch (e) {
-    console.error("loadData falhou:", e);
-
-    const s = localStorage.getItem(STORAGE_KEY);
-    if (s) {
-      const parsed = JSON.parse(s);
-      setData({
-        ...parsed,
-        sessions: sortSessions(parsed.sessions || []),
-      });
-    }
-  }
-};
-  
- const saveSession = async (session, uid = user?.id) => {
-  if (!uid) return false;
-
-  setSyncStatus("saving");
-
-  const ok = await saveWithRetry(session, uid);
-
-  if (ok) {
-    setSyncStatus("saved");
-    setLastSync(new Date());
-    setTimeout(() => setSyncStatus(null), 3000);
-    
-
     try {
-      const id = String(session.id);
-      const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+      const { data: prof } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+      if (prof) setProfile(prof);
 
-      localStorage.setItem(
-        PENDING_KEY,
-        JSON.stringify(pending.filter((pendingId) => pendingId !== id))
+      const local = localStorage.getItem(STORAGE_KEY);
+      const localSessions = local ? JSON.parse(local).sessions || [] : [];
+      const deletedIds = getDeletedSessionIds();
+      const visibleLocal = localSessions.filter(s => !deletedIds.includes(String(s.id)));
+
+      const { data: rows, error } = await supabase.from("sessions").select("*").eq("user_id", uid).order("id", { ascending: false });
+      if (error) throw error;
+
+      const remote = (rows || []).map(r => ({ ...r.data, id: r.id, updatedAt: r.updated_at ? Date.parse(r.updated_at) : r.id }));
+      const merged = mergeSessions(
+        remote.filter(s => !deletedIds.includes(String(s.id))),
+        visibleLocal
       );
-    } catch {}
 
-    return true;
-  }
+      setData({ sessions: merged });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions: merged }));
 
-  setSyncStatus("error");
+      const { data: pend } = await supabase.from("friendships").select("*").eq("receiver_id", uid).eq("status", "pending");
+      if (pend) setPendingCount(pend.length);
 
-  try {
-    const id = String(session.id);
-    const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
-
-    if (!pending.includes(id)) {
-      localStorage.setItem(PENDING_KEY, JSON.stringify([...pending, id]));
-    }
-  } catch {}
-
-  setTimeout(async () => {
-    if (!uid) return;
-
-    const ok2 = await saveWithRetry(session, uid);
-
-    if (ok2) {
-      setSyncStatus("saved");
-      setLastSync(new Date());
-      setTimeout(() => setSyncStatus(null), 3000);
-
+      // Sync pendentes offline
       try {
-        const id = String(session.id);
-        const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
-
-        localStorage.setItem(
-          PENDING_KEY,
-          JSON.stringify(pending.filter((pendingId) => pendingId !== id))
-        );
+        const pendingSync = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+        if (pendingSync.length > 0) {
+          for (const id of pendingSync) {
+            const s = merged.find(s => String(s.id) === id);
+            if (s) await saveWithRetry(s, uid);
+          }
+          localStorage.removeItem(PENDING_KEY);
+        }
       } catch {}
+    } catch (e) {
+      console.error("loadData falhou:", e);
+      try { const s = localStorage.getItem(STORAGE_KEY); if (s) setData(JSON.parse(s)); } catch {}
     }
-  }, 10000);
-
-  return false;
-};
-
-  const save = async (nd) => {
-  const normalized = {
-    ...nd,
-    sessions: sortSessions(nd.sessions || []),
   };
 
-  setData(normalized);
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  } catch {}
-};
-
-  const newSession = async () => {
-  const s = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    status: "pending",
-    startedAt: null,
-    finishedAt: null,
-    lower: [],
-    upper: [],
-  };
-
-  const nd = {
-    ...data,
-    sessions: [s, ...data.sessions],
-  };
-
-  await save(nd);
-
-  setActiveSession(s.id);
-  setTab("session");
-};
-
-const updateSession = async (updated) => {
-  const withTimestamp = {
-    ...updated,
-    updatedAt: Date.now(),
-  };
-
-  const nd = {
-    ...data,
-    sessions: data.sessions.map((s) =>
-      String(s.id) === String(withTimestamp.id) ? withTimestamp : s
-    ),
-  };
-
-  await save(nd);
-
-  setActiveSession(withTimestamp.id);
-};
-  
-  const finishSession = async () => {
-  const s = data.sessions.find((s) => String(s.id) === String(activeSession));
-
-  if (!s) return;
-
-  const updated = {
-    ...s,
-    status: "done",
-    finishedAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  const nd = {
-    ...data,
-    sessions: data.sessions.map((item) =>
-      String(item.id) === String(activeSession) ? updated : item
-    ),
-  };
-
-  await save(nd);
-
-  setCelebration(true);
-
-  saveSession(updated);
-};
-  
-  const deleteSession = async (id) => {
-  addDeletedSessionId(id);
-
-  const nd = {
-    ...data,
-    sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
-  };
-
-  await save(nd);
-  setTab("home");
-
-  if (user) {
+  // ── Save ─────────────────────────────────────────────────
+  const saveSession = async (session, uid = user?.id) => {
+    if (!uid) return false;
     setSyncStatus("saving");
 
-    const ok = await deleteWithRetry(id, user.id);
+    const ok = await saveWithRetry(session, uid);
 
     if (ok) {
-      removeDeletedSessionId(id);
       setSyncStatus("saved");
       setTimeout(() => setSyncStatus(null), 3000);
-    } else {
-      setSyncStatus("error");
+      try {
+        const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+        localStorage.setItem(PENDING_KEY, JSON.stringify(pending.filter(id => id !== String(session.id))));
+      } catch {}
+      return true;
     }
-  }
-};
 
-  const saveManualSession = async (session) => {
-  const nd = {
-    ...data,
-    sessions: [session, ...data.sessions],
+    setSyncStatus("error");
+    setTimeout(() => setSyncStatus(null), 5000); // ✅ erro some após 5s, não fica preso
+    try {
+      const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+      if (!pending.includes(String(session.id))) {
+        localStorage.setItem(PENDING_KEY, JSON.stringify([...pending, String(session.id)]));
+      }
+    } catch {}
+
+    // Retry automático após 10s
+    setTimeout(async () => {
+      if (!uid) return;
+      const ok2 = await saveWithRetry(session, uid);
+      if (ok2) {
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus(null), 3000);
+        try {
+          const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]").map(String);
+          localStorage.setItem(PENDING_KEY, JSON.stringify(pending.filter(id => id !== String(session.id))));
+        } catch {}
+      }
+    }, 10000);
+
+    return false;
   };
 
-  await save(nd);
+  const save = async (nd) => {
+    const normalized = { ...nd, sessions: sortSessions(nd.sessions || []) };
+    setData(normalized);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)); } catch {}
+  };
 
-  setShowManual(false);
-  setActiveSession(null);
-  setTab("home");
+  // ── Session actions ───────────────────────────────────────
+  const newSession = async () => {
+    const s = { id: Date.now(), date: new Date().toISOString(), status: "pending", startedAt: null, finishedAt: null, lower: [], upper: [] };
+    await save({ ...data, sessions: [s, ...data.sessions] });
+    setActiveSession(s.id);
+    setTab("session");
+  };
 
-  saveSession(session);
-};
+  const updateSession = async (updated) => {
+    const withTs = { ...updated, updatedAt: Date.now() };
+    await save({ ...data, sessions: data.sessions.map(s => String(s.id) === String(withTs.id) ? withTs : s) });
+    setActiveSession(withTs.id);
+  };
 
-  const logout=async()=>{
+  const finishSession = async () => {
+    const s = data.sessions.find(s => String(s.id) === String(activeSession));
+    if (!s) return;
+    const updated = { ...s, status: "done", finishedAt: Date.now(), updatedAt: Date.now() };
+    await save({ ...data, sessions: data.sessions.map(item => String(item.id) === String(activeSession) ? updated : item) });
+    setCelebration(true);
+    saveSession(updated); // fire-and-forget
+  };
+
+  const deleteSession = async (id) => {
+    addDeletedSessionId(id);
+    await save({ ...data, sessions: data.sessions.filter(s => String(s.id) !== String(id)) });
+    setTab("home");
+    if (user) {
+      setSyncStatus("saving");
+      const ok = await deleteWithRetry(id, user.id);
+      if (ok) { removeDeletedSessionId(id); setSyncStatus("saved"); setTimeout(() => setSyncStatus(null), 3000); }
+      else { setSyncStatus("error"); setTimeout(() => setSyncStatus(null), 5000); }
+    }
+  };
+
+  const saveManualSession = async (session) => {
+    await save({ ...data, sessions: [session, ...data.sessions] });
+    setShowManual(false);
+    setActiveSession(null);
+    setTab("home");
+    saveSession(session);
+  };
+
+  const logout = async () => {
     await supabase.auth.signOut();
-    setUser(null); setProfile(null); setData({sessions:[]}); setPendingCount(0);
-    try{localStorage.removeItem(STORAGE_KEY);}catch{}
+    setUser(null); setProfile(null); setData({ sessions: [] }); setPendingCount(0);
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
 
   const handleRefresh = async () => {
-  if (refreshing) return;
-
-  setRefreshing(true);
-
-  const timeout = new Promise((resolve) =>
-    setTimeout(() => resolve("timeout"), 8000)
-  );
-
-  try {
-    if (user?.id) {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
       await Promise.race([
-        loadData(user.id),
-        timeout,
+        user?.id ? loadData(user.id) : Promise.resolve(),
+        new Promise(resolve => setTimeout(() => resolve("timeout"), 8000)),
       ]);
-    } else {
-      const s = localStorage.getItem(STORAGE_KEY);
-      if (s) setData(JSON.parse(s));
-    }
-  } catch (e) {
-    console.error("Refresh falhou:", e);
-  } finally {
-    setRefreshing(false);
-  }
-};
-  
-  const currentSession=data.sessions.find(s=>s.id===activeSession);
-  const totalEx=s=>(s.lower?.length||0)+(s.upper?.length||0);
-  const statusBadge=s=>{
-    if(s.status==="done")   return{label:"✅ Finalizado",  color:T.green,bg:`${T.green}18`};
-    if(s.status==="active") return{label:"🔥 Em andamento",color:T.accent,bg:`${T.accent}18`};
-    return                        {label:"⏸ Não iniciado", color:T.textMuted,bg:T.bgCard};
+    } catch (e) { console.error("Refresh falhou:", e); }
+    finally { setRefreshing(false); }
   };
 
-  if(!loaded) return(
-    <div style={{background:T.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
+  // ── Helpers ───────────────────────────────────────────────
+  const currentSession = data.sessions.find(s => s.id === activeSession);
+  const totalEx = s => (s.lower?.length || 0) + (s.upper?.length || 0);
+
+  const statusBadge = s => {
+    if (s.status === "done") return { label: "✅ Finalizado", color: T.green, bg: `${T.green}18` };
+    if (s.status === "active") return { label: "🔥 Em andamento", color: T.accent, bg: `${T.accent}18` };
+    return { label: "⏸ Não iniciado", color: T.textMuted, bg: T.bgCard };
+  };
+
+  // ── Sync badge ────────────────────────────────────────────
+  const sync = syncStatus === "saving"
+    ? { icon: "🍑", label: "Salvando...", bg: `${T.accent}18`, color: T.accent, spin: true }
+    : syncStatus === "saved"
+    ? { icon: "✓", label: "Sincronizado", bg: `${T.green}18`, color: T.green, spin: false }
+    : syncStatus === "error"
+    ? { icon: "!", label: "Erro ao salvar", bg: `${T.danger}18`, color: T.danger, spin: false }
+    : null; // ✅ null = não mostra nada quando offline/sem status
+
+  // ── Loading ───────────────────────────────────────────────
+  if (!loaded) return (
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "16px" }}>
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}`}</style>
-      <span className="pumpi-spin" style={{fontSize:"48px"}}>🍑</span>
-      <p style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"1px"}}>Carregando...</p>
+      <span className="pumpi-spin" style={{ fontSize: "48px" }}>🍑</span>
+      <p style={{ color: T.accent, fontSize: "13px", fontFamily: "'DM Sans',sans-serif", fontWeight: 600, letterSpacing: "1px" }}>Carregando...</p>
     </div>
   );
-  if(!user) return <LoginScreen theme={T} onLogin={(u)=>{setUser(u);loadData(u.id);}}/>;
 
-  return(
-    <div style={{background:T.bg,minHeight:"100vh",maxWidth:"480px",margin:"0 auto",fontFamily:"'DM Sans',sans-serif",paddingBottom:"80px",transition:"background 2s ease"}}>
+  if (!user) return <LoginScreen theme={T} onLogin={u => { setUser(u); loadData(u.id); }} />;
+
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh", maxWidth: "480px", margin: "0 auto", fontFamily: "'DM Sans',sans-serif", paddingBottom: "80px", transition: "background 2s ease" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         html,body{width:100%;height:100%;overflow-x:hidden;}
         input::placeholder{color:${T.textMuted}!important;}
         input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
         input[type=date]{color-scheme:${T.id==="manha"?"light":"dark"};}
         select option{background:${T.modalBg};color:${T.text};}
+        textarea{font-family:'DM Sans',sans-serif!important;}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         .pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}
-        .pumpi-refresh-spin{animation:spin 1s linear infinite;display:inline-block;}
       `}</style>
 
-      {celebration&&currentSession&&<CelebrationModal theme={T} session={currentSession} onClose={()=>setCelebration(false)}/>}
-      {showManual&&<ManualSessionModal theme={T} onSave={saveManualSession} onClose={()=>setShowManual(false)} allSessions={data.sessions}/>}
+      {celebration && currentSession && <CelebrationModal theme={T} session={currentSession} onClose={() => setCelebration(false)} />}
+      {showManual && <ManualSessionModal theme={T} onSave={saveManualSession} onClose={() => setShowManual(false)} allSessions={data.sessions} />}
 
-      <div style={{padding:"calc(env(safe-area-inset-top) + 16px) 20px 16px",borderBottom:`1px solid ${T.divider}`,position:"sticky",top:0,background:T.header,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          {tab==="session"?(
-            <button onClick={()=>setTab("home")} style={{background:"none",border:"none",color:T.accent,fontSize:"14px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Voltar</button>
-          ):(
+      {/* Header */}
+      <div style={{ padding: "calc(env(safe-area-inset-top) + 16px) 20px 16px", borderBottom: `1px solid ${T.divider}`, position: "sticky", top: 0, background: T.header, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {tab === "session" ? (
+            <button onClick={() => setTab("home")} style={{ background: "none", border: "none", color: T.accent, fontSize: "14px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>← Voltar</button>
+          ) : (
             <div>
-              <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"2px"}}>
-                <span style={{fontSize:"16px"}}>🍑</span>
-                <span style={{color:T.accent,fontSize:"16px",fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>Pumpi</span>
-                <span style={{color:T.textMuted,fontSize:"10px",fontFamily:"'DM Sans',sans-serif"}}>{T.icon}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
+                <span style={{ fontSize: "16px" }}>🍑</span>
+                <span style={{ color: T.accent, fontSize: "16px", fontWeight: 800, fontFamily: "'DM Sans',sans-serif" }}>Pumpi</span>
+                {/* ✅ Sem emoji do tempo */}
                 {sync && (
-  <span
-    style={{
-      marginLeft: "6px",
-      background: sync.bg,
-      color: sync.color,
-      borderRadius: "999px",
-      padding: "3px 8px",
-      fontSize: "10px",
-      fontWeight: 800,
-      fontFamily: "'DM Sans',sans-serif",
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "4px",
-      whiteSpace: "nowrap",
-    }}
-  >
-    <span className={syncStatus === "saving" ? "pumpi-spin" : ""}>
-      {sync.icon}
-    </span>
-    {sync.label}
-  </span>
-)}
+                  <span style={{ marginLeft: "4px", background: sync.bg, color: sync.color, borderRadius: "999px", padding: "3px 8px", fontSize: "10px", fontWeight: 700, fontFamily: "'DM Sans',sans-serif", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span className={sync.spin ? "pumpi-spin" : ""}>{sync.icon}</span>
+                    {sync.label}
+                  </span>
+                )}
               </div>
-              <p style={{color:T.textSub,fontSize:"12px",fontFamily:"'DM Sans',sans-serif"}}>{profile?`@${profile.username}`:"Progresso de Treino"}</p>
+              <p style={{ color: T.textSub, fontSize: "12px", fontFamily: "'DM Sans',sans-serif" }}>{profile ? `@${profile.username}` : "Progresso de Treino"}</p>
             </div>
           )}
-          {tab==="home"&&(
-            <div style={{display:"flex",gap:"8px"}}>
-              <button onClick={()=>setShowManual(true)} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"12px",color:T.textSub,fontWeight:600,fontSize:"12px",padding:"10px 12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>📅 Manual</button>
-              <button onClick={newSession} style={{background:T.accent,border:"none",borderRadius:"12px",color:T.accentText,fontWeight:700,fontSize:"13px",padding:"10px 16px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>+ Nova</button>
+
+          {tab === "home" && (
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => setShowManual(true)} style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "12px", color: T.textSub, fontWeight: 600, fontSize: "12px", padding: "10px 12px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>📅</button>
+              <button onClick={newSession} style={{ background: T.accent, border: "none", borderRadius: "12px", color: T.accentText, fontWeight: 700, fontSize: "13px", padding: "10px 16px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>+ Nova</button>
             </div>
           )}
-          {tab==="session"&&currentSession&&<div style={{textAlign:"right"}}><p style={{color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(currentSession.date).toLocaleDateString("pt-BR",{day:"2-digit",month:"short"})}</p><p style={{color:T.textMuted,fontSize:"10px",marginTop:"2px",fontFamily:"'DM Sans',sans-serif"}}>{totalEx(currentSession)} exercícios</p></div>}
-          {(tab==="metrics"||tab==="friends")&&<button onClick={logout} style={{background:"none",border:"none",color:T.textMuted,fontSize:"12px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Sair</button>}
+
+          {tab === "session" && currentSession && (
+            <div style={{ textAlign: "right" }}>
+              <p style={{ color: T.textSub, fontSize: "11px", fontFamily: "'DM Sans',sans-serif" }}>{new Date(currentSession.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</p>
+              <p style={{ color: T.textMuted, fontSize: "10px", marginTop: "2px", fontFamily: "'DM Sans',sans-serif" }}>{totalEx(currentSession)} exercícios</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {refreshing&&(
-        <div style={{textAlign:"center",padding:"12px",display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}}>
-          <span className="pumpi-refresh-spin" style={{fontSize:"18px"}}>🍑</span>
-          <span style={{color:T.accent,fontSize:"13px",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>Atualizando...</span>
+      {/* Refresh indicator */}
+      {refreshing && (
+        <div style={{ textAlign: "center", padding: "12px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+          <span className="pumpi-spin" style={{ fontSize: "18px" }}>🍑</span>
+          <span style={{ color: T.accent, fontSize: "13px", fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>Atualizando...</span>
         </div>
       )}
 
-      <div style={{padding:"20px"}}
-        onTouchStart={e=>{touchStartY.current=e.touches[0].clientY;}}
-        onTouchEnd={e=>{
-          const dy=e.changedTouches[0].clientY-touchStartY.current;
-          if(dy>80&&tab!=="session"&&!refreshing){
-            touchStartY.current=0;
-            handleRefresh();
-          }
+      {/* Main content */}
+      <div
+        style={{ padding: "20px" }}
+        onTouchStart={e => { touchStartY.current = e.touches[0].clientY; }}
+        onTouchEnd={e => {
+          const dy = e.changedTouches[0].clientY - touchStartY.current;
+          if (dy > 80 && tab !== "session" && !refreshing) { touchStartY.current = 0; handleRefresh(); }
         }}
       >
-        {tab==="home"&&(data.sessions.length===0?(
-          <div style={{textAlign:"center",padding:"70px 20px"}}>
-            <div style={{fontSize:"56px",marginBottom:"16px"}}>🍑</div>
-            <p style={{color:T.textSub,fontSize:"14px",lineHeight:1.7,fontFamily:"'DM Sans',sans-serif"}}>Bem-vinda ao Pumpi!<br/>Toque em "+ Nova" para começar.</p>
-          </div>
-        ):sortSessions(data.sessions).map(s=>{
-          const total=totalEx(s),badge=statusBadge(s),dur=calcDuration(s.startedAt,s.finishedAt);
-          return(
-            <div key={s.id} onClick={()=>{setActiveSession(s.id);setTab("session");}} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"16px",padding:"16px",marginBottom:"10px",cursor:"pointer"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:total>0?"10px":"0"}}>
-                <div>
-                  <p style={{color:T.text,fontWeight:600,fontSize:"15px",fontFamily:"'DM Sans',sans-serif"}}>{new Date(s.date).toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"})}</p>
-                  <p style={{color:T.textSub,fontSize:"12px",marginTop:"3px",fontFamily:"'DM Sans',sans-serif"}}>{s.lower?.length||0} lower · {s.upper?.length||0} upper{dur?` · ${dur}`:""}{s.manual?" · manual 📅":""}</p>
-                </div>
-                <span style={{background:badge.bg,color:badge.color,borderRadius:"8px",padding:"4px 10px",fontSize:"11px",fontWeight:600,fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{badge.label}</span>
-              </div>
-              {total>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{[...(s.lower||[]),...(s.upper||[])].slice(0,4).map((ex,i)=><span key={i} style={{background:T.bgCard,border:`1px solid ${T.bgCardBorder}`,borderRadius:"6px",padding:"3px 8px",color:T.textSub,fontSize:"11px",fontFamily:"'DM Sans',sans-serif"}}>{ex.machine}{ex.weight?` · ${ex.weight}kg`:""}</span>)}{total>4&&<span style={{color:T.textMuted,fontSize:"11px",padding:"3px 0",fontFamily:"'DM Sans',sans-serif"}}>+{total-4} mais</span>}</div>}
+        {/* HOME */}
+        {tab === "home" && (
+          data.sessions.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "70px 20px" }}>
+              <div style={{ fontSize: "56px", marginBottom: "16px" }}>🍑</div>
+              <p style={{ color: T.textSub, fontSize: "14px", lineHeight: 1.7, fontFamily: "'DM Sans',sans-serif" }}>Bem-vinda ao Pumpi!<br />Toque em "+ Nova" para começar.</p>
             </div>
-          );
-        }))}
+          ) : sortSessions(data.sessions).map(s => {
+            const total = totalEx(s), badge = statusBadge(s), dur = calcDuration(s.startedAt, s.finishedAt);
+            return (
+              <div key={s.id} onClick={() => { setActiveSession(s.id); setTab("session"); }}
+                style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "16px", padding: "16px", marginBottom: "10px", cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: total > 0 ? "10px" : "0" }}>
+                  <div>
+                    <p style={{ color: T.text, fontWeight: 600, fontSize: "15px", fontFamily: "'DM Sans',sans-serif" }}>
+                      {new Date(s.date).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+                    </p>
+                    <p style={{ color: T.textSub, fontSize: "12px", marginTop: "3px", fontFamily: "'DM Sans',sans-serif" }}>
+                      {s.lower?.length || 0} lower · {s.upper?.length || 0} upper{dur ? ` · ${dur}` : ""}{s.manual ? " · manual" : ""}
+                    </p>
+                  </div>
+                  <span style={{ background: badge.bg, color: badge.color, borderRadius: "8px", padding: "4px 10px", fontSize: "11px", fontWeight: 600, fontFamily: "'DM Sans',sans-serif", whiteSpace: "nowrap" }}>
+                    {badge.label}
+                  </span>
+                </div>
+                {total > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                    {[...(s.lower || []), ...(s.upper || [])].slice(0, 4).map((ex, i) => (
+                      <span key={i} style={{ background: T.bgCard, border: `1px solid ${T.bgCardBorder}`, borderRadius: "6px", padding: "3px 8px", color: T.textSub, fontSize: "11px", fontFamily: "'DM Sans',sans-serif" }}>
+                        {ex.machine}{ex.weight ? ` · ${ex.weight}kg` : ""}
+                      </span>
+                    ))}
+                    {total > 4 && <span style={{ color: T.textMuted, fontSize: "11px", padding: "3px 0", fontFamily: "'DM Sans',sans-serif" }}>+{total - 4} mais</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+
+        {/* SESSION */}
         {tab === "session" && currentSession && (
-  <>
-    <SessionView
-      session={currentSession}
-      onUpdate={updateSession}
-      onSave={saveSession}
-      theme={T}
-      onFinish={finishSession}
-      data={data.sessions}
-    />
+          <>
+            <SessionView session={currentSession} onUpdate={updateSession} onSave={saveSession} theme={T} onFinish={finishSession} data={data.sessions} />
+            <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
+              {currentSession.status === "pending" && (
+                <button onClick={() => updateSession({ ...currentSession, status: "active", startedAt: Date.now() })}
+                  style={{ background: T.accent, border: "none", borderRadius: "14px", color: T.accentText, fontWeight: 800, fontSize: "15px", padding: "15px", width: "100%", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", boxShadow: `0 4px 16px ${T.accent}35` }}>
+                  Começar treino 🍑
+                </button>
+              )}
+              {currentSession.status === "active" && (
+                <button onClick={finishSession}
+                  style={{ background: T.green, border: "none", borderRadius: "14px", color: "#fff", fontWeight: 800, fontSize: "15px", padding: "15px", width: "100%", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", boxShadow: `0 4px 16px ${T.green}35` }}>
+                  Finalizar seu treino 🍑
+                </button>
+              )}
+              {currentSession.status === "done" && (
+                <>
+                  <button onClick={() => setTab("home")}
+                    style={{ background: T.accent, border: "none", borderRadius: "14px", color: T.accentText, fontWeight: 800, fontSize: "15px", padding: "15px", width: "100%", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+                    Voltar para meus treinos
+                  </button>
+                  <button onClick={() => deleteSession(currentSession.id)}
+                    style={{ background: "transparent", border: `1px solid ${T.danger}30`, borderRadius: "12px", color: T.danger, fontSize: "13px", padding: "12px", width: "100%", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", opacity: 0.65 }}>
+                    Excluir sessão
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
 
-    <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
-      {currentSession.status === "pending" && (
-        <button
-          onClick={() =>
-            updateSession({
-              ...currentSession,
-              status: "active",
-              startedAt: Date.now(),
-            })
-          }
-          style={{
-            background: T.accent,
-            border: "none",
-            borderRadius: "14px",
-            color: T.accentText,
-            fontWeight: 800,
-            fontSize: "15px",
-            padding: "15px",
-            width: "100%",
-            cursor: "pointer",
-            fontFamily: "'DM Sans',sans-serif",
-            boxShadow: `0 4px 16px ${T.accent}35`,
-          }}
-        >
-          Começar treino 🍑
-        </button>
-      )}
-
-      {currentSession.status === "active" && (
-        <button
-          onClick={finishSession}
-          style={{
-            background: T.green,
-            border: "none",
-            borderRadius: "14px",
-            color: "#fff",
-            fontWeight: 800,
-            fontSize: "15px",
-            padding: "15px",
-            width: "100%",
-            cursor: "pointer",
-            fontFamily: "'DM Sans',sans-serif",
-            boxShadow: `0 4px 16px ${T.green}35`,
-          }}
-        >
-          Finalizar seu treino 🍑
-        </button>
-      )}
-
-      {currentSession.status === "done" && (
-        <>
-          <button
-            onClick={() => setTab("home")}
-            style={{
-              background: T.accent,
-              border: "none",
-              borderRadius: "14px",
-              color: T.accentText,
-              fontWeight: 800,
-              fontSize: "15px",
-              padding: "15px",
-              width: "100%",
-              cursor: "pointer",
-              fontFamily: "'DM Sans',sans-serif",
-            }}
-          >
-            Voltar para meus treinos 🍑
-          </button>
-
-          <button
-            onClick={() => deleteSession(currentSession.id)}
-            style={{
-              background: "transparent",
-              border: `1px solid ${T.danger}30`,
-              borderRadius: "12px",
-              color: T.danger,
-              fontSize: "13px",
-              padding: "12px",
-              width: "100%",
-              cursor: "pointer",
-              fontFamily: "'DM Sans',sans-serif",
-              opacity: 0.65,
-            }}
-          >
-            Excluir sessão
-          </button>
-        </>
-      )}
-    </div>
-  </>
-)}
-        {tab==="metrics"&&<div style={{paddingBottom:"100px"}}><MetricsView sessions={data.sessions} theme={T}/></div>}
-        {tab==="profile"&&(
-  <div style={{paddingBottom:"100px"}}>
-    <ProfileView
-      profile={profile}
-      sessions={data.sessions}
-      theme={T}
-      onLogout={logout}
-      user={user}
-      syncStatus={syncStatus}
-    />
-  </div>
-)}
-        {tab==="friends"&&<div style={{paddingBottom:"100px"}}><FriendsView theme={T} user={user} sessions={data.sessions}/></div>}
+        {tab === "metrics" && <div style={{ paddingBottom: "100px" }}><MetricsView sessions={data.sessions} theme={T} /></div>}
+        {tab === "friends" && <div style={{ paddingBottom: "100px" }}><FriendsView theme={T} user={user} sessions={data.sessions} /></div>}
+        {tab === "profile" && (
+          <div style={{ paddingBottom: "100px" }}>
+            <ProfileView profile={profile} sessions={data.sessions} theme={T} onLogout={logout} user={user} syncStatus={syncStatus} />
+          </div>
+        )}
       </div>
 
-      {tab!=="session"&&(
-        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"480px",background:T.header,borderTop:`1px solid ${T.divider}`,display:"flex",zIndex:20,paddingBottom:"env(safe-area-inset-bottom)"}}>
-          {[{id:"home",label:"Treinos",icon:"🏠"},{id:"friends",label:"Amigos",icon:"👯",badge:pendingCount},{id:"metrics",label:"Métricas",icon:"📊"},{id:"profile",label:"Perfil",icon:"👤"}].map(n=>(
-            <button key={n.id} onClick={()=>setTab(n.id)} style={{flex:1,padding:"14px 0 18px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
-              <div style={{position:"relative",display:"inline-block"}}>
-                <span style={{fontSize:"20px"}}>{n.icon}</span>
-                {n.badge>0&&<span style={{position:"absolute",top:"-4px",right:"-8px",background:"#ff6b6b",color:"#fff",fontSize:"9px",fontWeight:800,padding:"1px 5px",borderRadius:"10px",fontFamily:"'DM Sans',sans-serif"}}>{n.badge}</span>}
+      {/* Bottom Nav */}
+      {tab !== "session" && (
+        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: "480px", background: T.header, borderTop: `1px solid ${T.divider}`, display: "flex", zIndex: 20, paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {[
+            { id: "home", label: "Treinos", icon: "🏠" },
+            { id: "friends", label: "Amigos", icon: "👯", badge: pendingCount },
+            { id: "metrics", label: "Métricas", icon: "📊" },
+            { id: "profile", label: "Perfil", icon: "👤" },
+          ].map(n => (
+            <button key={n.id} onClick={() => setTab(n.id)}
+              style={{ flex: 1, padding: "14px 0 18px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <span style={{ fontSize: "20px" }}>{n.icon}</span>
+                {n.badge > 0 && (
+                  <span style={{ position: "absolute", top: "-4px", right: "-8px", background: "#ff6b6b", color: "#fff", fontSize: "9px", fontWeight: 800, padding: "1px 5px", borderRadius: "10px", fontFamily: "'DM Sans',sans-serif" }}>
+                    {n.badge}
+                  </span>
+                )}
               </div>
-              <span style={{color:tab===n.id?T.accent:T.textMuted,fontSize:"10px",fontWeight:tab===n.id?700:400,fontFamily:"'DM Sans',sans-serif",letterSpacing:"0.5px"}}>{n.label}</span>
-              {tab===n.id&&<div style={{width:"20px",height:"2px",background:T.accent,borderRadius:"1px"}}/>}
+              <span style={{ color: tab === n.id ? T.accent : T.textMuted, fontSize: "10px", fontWeight: tab === n.id ? 700 : 400, fontFamily: "'DM Sans',sans-serif", letterSpacing: "0.5px" }}>
+                {n.label}
+              </span>
+              {tab === n.id && <div style={{ width: "20px", height: "2px", background: T.accent, borderRadius: "1px" }} />}
             </button>
           ))}
         </div>
