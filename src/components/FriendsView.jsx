@@ -444,32 +444,7 @@ const loadFriends = async (alive = true) => {
     </p>
   );
 
-  if (loadingFriends) {
-    return (
-      <div style={{ textAlign: "center", padding: "60px 20px" }}>
-        <style>{`
-          @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-          .pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}
-        `}</style>
-
-        <span className="pumpi-spin" style={{ fontSize: "32px" }}>
-          🍑
-        </span>
-
-        <p
-          style={{
-            color: T.textSub,
-            fontSize: "13px",
-            fontFamily: "'DM Sans',sans-serif",
-            marginTop: "12px",
-          }}
-        >
-          Carregando amigas...
-        </p>
-      </div>
-    );
-  }
-
+  
   const battleTypes = [
     {
       id: "streak",
@@ -527,6 +502,21 @@ const loadFriends = async (alive = true) => {
           </button>
         ))}
       </div>
+
+      {loadingFriends && (
+  <Card>
+    <p
+      style={{
+        color: T.textSub,
+        fontSize: "13px",
+        fontFamily: "'DM Sans',sans-serif",
+        margin: 0,
+      }}
+    >
+      Carregando amigas...
+    </p>
+  </Card>
+)}
 
       {tab === "friends" && (
         <div>
