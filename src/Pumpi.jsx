@@ -327,23 +327,31 @@ const finishSession = async () => {
   saveSession(updated);
 };
 
-    setTab("home");
+const deleteSession = async (id) => {
+  addDeletedSessionId(id);
 
-    if (user) {
-      setSyncStatus("saving");
+  await save({
+    ...data,
+    sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
+  });
 
-      const ok = await deleteWithRetry(id, user.id);
+  setTab("home");
 
-      if (ok) {
-        removeDeletedSessionId(id);
-        setSyncStatus("saved");
-        setTimeout(() => setSyncStatus(null), 3000);
-      } else {
-        setSyncStatus("error");
-        setTimeout(() => setSyncStatus(null), 5000);
-      }
+  if (user) {
+    setSyncStatus("saving");
+
+    const ok = await deleteWithRetry(id, user.id);
+
+    if (ok) {
+      removeDeletedSessionId(id);
+      setSyncStatus("saved");
+      setTimeout(() => setSyncStatus(null), 3000);
+    } else {
+      setSyncStatus("error");
+      setTimeout(() => setSyncStatus(null), 5000);
     }
-  };
+  }
+};
 
   const saveManualSession = async (session) => {
     await save({
