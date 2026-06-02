@@ -121,3 +121,34 @@ export function calcMachinePRs(allExercises) {
 
   return prs;
 }
+export function calcWeeklyProgress(doneSessions, workoutDays = [1, 2, 3, 4, 5]) {
+  const today = new Date();
+  const start = new Date(today);
+
+  const day = today.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  start.setDate(today.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  const trainedThisWeek = new Set(
+    doneSessions
+      .filter((session) => {
+        const date = new Date(session.date);
+        return date >= start && date < end;
+      })
+      .map((session) => session.date.slice(0, 10))
+  );
+
+  const target = workoutDays.length || 5;
+  const done = trainedThisWeek.size;
+
+  return {
+    done,
+    target,
+    pct: Math.min(100, Math.round((done / target) * 100)),
+  };
+}
