@@ -10,7 +10,7 @@ import {
   sortSessions,
 } from "./lib/storage";
 import { getTimeTheme } from "./lib/themes";
-import { calcDuration } from "./lib/utils";
+import { calcDuration, formatLongDateBR } from "./lib/utils";
 
 import LoginScreen from "./components/LoginScreen";
 import SessionView from "./components/SessionView";
@@ -38,10 +38,7 @@ export default function Pumpi() {
   const T = theme;
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setTheme(getTimeTheme());
-    }, 60000);
-
+    const id = setInterval(() => setTheme(getTimeTheme()), 60000);
     return () => clearInterval(id);
   }, []);
 
@@ -49,9 +46,7 @@ export default function Pumpi() {
     if (!user) return;
 
     const id = setInterval(() => {
-      if (tab !== "session") {
-        loadData(user.id);
-      }
+      if (tab !== "session") loadData(user.id);
     }, 5 * 60 * 1000);
 
     return () => clearInterval(id);
@@ -62,15 +57,6 @@ export default function Pumpi() {
 
     const init = async () => {
       try {
-        const local = localStorage.getItem(STORAGE_KEY);
-
-        if (local) {
-          const parsed = JSON.parse(local);
-          setData({
-            sessions: sortSessions(parsed.sessions || []),
-          });
-        }
-
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -79,25 +65,19 @@ export default function Pumpi() {
 
         if (session?.user) {
           setUser(session.user);
-          setLoaded(true);
-          loadData(session.user.id);
+          await loadData(session.user.id);
         } else {
-          setLoaded(true);
+          const local = localStorage.getItem(STORAGE_KEY);
+          if (local) setData(JSON.parse(local));
         }
       } catch (e) {
         console.error("Init falhou:", e?.message || e);
 
         try {
           const local = localStorage.getItem(STORAGE_KEY);
-
-          if (local) {
-            const parsed = JSON.parse(local);
-            setData({
-              sessions: sortSessions(parsed.sessions || []),
-            });
-          }
+          if (local) setData(JSON.parse(local));
         } catch {}
-
+      } finally {
         if (alive) setLoaded(true);
       }
     };
@@ -109,17 +89,7 @@ export default function Pumpi() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user);
-
-        const local = localStorage.getItem(STORAGE_KEY);
-
-        if (local) {
-          const parsed = JSON.parse(local);
-          setData({
-            sessions: sortSessions(parsed.sessions || []),
-          });
-        }
-
-        loadData(session.user.id);
+        await loadData(session.user.id);
       }
 
       if (event === "SIGNED_OUT") {
@@ -136,64 +106,7 @@ export default function Pumpi() {
     };
   }, []);
 
-  const loadLocalDataFirst = () => {
-    try {
-      const local = localStorage.getItem(STORAGE_KEY);
-
-      if (!local) return [];
-
-      const parsed = JSON.parse(local);
-      const deletedIds = getDeletedSessionIds();
-
-      const localSessions = sortSessions(
-        (parsed.sessions || []).filter(
-          (session) => !deletedIds.includes(String(session.id))
-        )
-      );
-
-      setData({ sessions: localSessions });
-
-      return localSessions;
-    } catch {
-      return [];
-    }
-  };
-
-  const syncPendingSessions = async (sessions, uid) => {
-    try {
-      const pendingIds = JSON.parse(
-        localStorage.getItem(PENDING_KEY) || "[]"
-      ).map(String);
-
-      if (pendingIds.length === 0) return;
-
-      const failedIds = [];
-
-      for (const id of pendingIds) {
-        const session = sessions.find((s) => String(s.id) === id);
-
-        if (!session) continue;
-
-        const ok = await saveWithRetry(session, uid);
-
-        if (!ok) {
-          failedIds.push(id);
-        }
-      }
-
-      if (failedIds.length > 0) {
-        localStorage.setItem(PENDING_KEY, JSON.stringify(failedIds));
-      } else {
-        localStorage.removeItem(PENDING_KEY);
-      }
-    } catch (e) {
-      console.error("syncPendingSessions falhou:", e);
-    }
-  };
-
   const loadData = async (uid) => {
-    const localSessions = loadLocalDataFirst();
-
     try {
       const { data: prof } = await supabase
         .from("profiles")
@@ -203,7 +116,14 @@ export default function Pumpi() {
 
       if (prof) setProfile(prof);
 
+      const local = localStorage.getItem(STORAGE_KEY);
+      const localSessions = local ? JSON.parse(local).sessions || [] : [];
+
       const deletedIds = getDeletedSessionIds();
+
+      const visibleLocal = localSessions.filter(
+        (s) => !deletedIds.includes(String(s.id))
+      );
 
       const { data: rows, error } = await supabase
         .from("sessions")
@@ -213,27 +133,19 @@ export default function Pumpi() {
 
       if (error) throw error;
 
-      const remoteSessions = (rows || []).map((row) => ({
+      const remote = (rows || []).map((row) => ({
         ...row.data,
         id: row.id,
-        updatedAt: row.data?.updatedAt || row.id,
+        updatedAt: row.updated_at ? Date.parse(row.updated_at) : row.id,
       }));
 
       const merged = mergeSessions(
-        remoteSessions.filter(
-          (session) => !deletedIds.includes(String(session.id))
-        ),
-        localSessions
+        remote.filter((s) => !deletedIds.includes(String(s.id))),
+        visibleLocal
       );
 
-      const sorted = sortSessions(merged);
-
-      setData({ sessions: sorted });
-
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ sessions: sorted })
-      );
+      setData({ sessions: merged });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions: merged }));
 
       const { data: pending } = await supabase
         .from("friendships")
@@ -241,44 +153,30 @@ export default function Pumpi() {
         .eq("receiver_id", uid)
         .eq("status", "pending");
 
-      if (pending) {
-        setPendingCount(pending.length);
-      }
+      if (pending) setPendingCount(pending.length);
 
-      await syncPendingSessions(sorted, uid);
+      try {
+        const pendingSync = JSON.parse(
+          localStorage.getItem(PENDING_KEY) || "[]"
+        ).map(String);
+
+        if (pendingSync.length > 0) {
+          for (const id of pendingSync) {
+            const session = merged.find((s) => String(s.id) === id);
+            if (session) await saveWithRetry(session, uid);
+          }
+
+          localStorage.removeItem(PENDING_KEY);
+        }
+      } catch {}
     } catch (e) {
       console.error("loadData falhou:", e);
+
+      try {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) setData(JSON.parse(local));
+      } catch {}
     }
-  };
-
-  const markPendingSync = (sessionId) => {
-    try {
-      const pending = JSON.parse(
-        localStorage.getItem(PENDING_KEY) || "[]"
-      ).map(String);
-
-      if (!pending.includes(String(sessionId))) {
-        localStorage.setItem(
-          PENDING_KEY,
-          JSON.stringify([...pending, String(sessionId)])
-        );
-      }
-    } catch {}
-  };
-
-  const clearPendingSync = (sessionId) => {
-    try {
-      const pending = JSON.parse(
-        localStorage.getItem(PENDING_KEY) || "[]"
-      ).map(String);
-
-      localStorage.setItem(
-        PENDING_KEY,
-        JSON.stringify(
-          pending.filter((id) => id !== String(sessionId))
-        )
-      );
-    } catch {}
   };
 
   const saveSession = async (session, uid = user?.id) => {
@@ -289,15 +187,64 @@ export default function Pumpi() {
     const ok = await saveWithRetry(session, uid);
 
     if (ok) {
-      clearPendingSync(session.id);
       setSyncStatus("saved");
       setTimeout(() => setSyncStatus(null), 3000);
+
+      try {
+        const pending = JSON.parse(
+          localStorage.getItem(PENDING_KEY) || "[]"
+        ).map(String);
+
+        localStorage.setItem(
+          PENDING_KEY,
+          JSON.stringify(
+            pending.filter((id) => id !== String(session.id))
+          )
+        );
+      } catch {}
+
       return true;
     }
 
-    markPendingSync(session.id);
     setSyncStatus("error");
     setTimeout(() => setSyncStatus(null), 5000);
+
+    try {
+      const pending = JSON.parse(
+        localStorage.getItem(PENDING_KEY) || "[]"
+      ).map(String);
+
+      if (!pending.includes(String(session.id))) {
+        localStorage.setItem(
+          PENDING_KEY,
+          JSON.stringify([...pending, String(session.id)])
+        );
+      }
+    } catch {}
+
+    setTimeout(async () => {
+      if (!uid) return;
+
+      const ok2 = await saveWithRetry(session, uid);
+
+      if (ok2) {
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus(null), 3000);
+
+        try {
+          const pending = JSON.parse(
+            localStorage.getItem(PENDING_KEY) || "[]"
+          ).map(String);
+
+          localStorage.setItem(
+            PENDING_KEY,
+            JSON.stringify(
+              pending.filter((id) => id !== String(session.id))
+            )
+          );
+        } catch {}
+      }
+    }, 10000);
 
     return false;
   };
@@ -375,15 +322,8 @@ export default function Pumpi() {
       ),
     });
 
-    const ok = await saveSession(updated);
-
-    if (ok) {
-      setCelebration(true);
-    } else {
-      alert(
-        "Treino salvo no celular, mas ainda não sincronizou com o Supabase. Vou tentar novamente quando o app atualizar."
-      );
-    }
+    setCelebration(true);
+    saveSession(updated);
   };
 
   const deleteSession = async (id) => {
@@ -391,54 +331,38 @@ export default function Pumpi() {
 
     await save({
       ...data,
-      sessions: data.sessions.filter(
-        (session) => String(session.id) !== String(id)
-      ),
+      sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
     });
 
     setTab("home");
 
-    if (!user?.id) return;
+    if (user) {
+      setSyncStatus("saving");
 
-    setSyncStatus("saving");
+      const ok = await deleteWithRetry(id, user.id);
 
-    const ok = await deleteWithRetry(id, user.id);
-
-    if (ok) {
-      removeDeletedSessionId(id);
-      setSyncStatus("saved");
-      setTimeout(() => setSyncStatus(null), 3000);
-    } else {
-      setSyncStatus("error");
-      setTimeout(() => setSyncStatus(null), 5000);
+      if (ok) {
+        removeDeletedSessionId(id);
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus(null), 3000);
+      } else {
+        setSyncStatus("error");
+        setTimeout(() => setSyncStatus(null), 5000);
+      }
     }
   };
 
   const saveManualSession = async (session) => {
-    const withTimestamp = {
-      ...session,
-      updatedAt: Date.now(),
-    };
-
     await save({
       ...data,
-      sessions: [withTimestamp, ...data.sessions],
+      sessions: [session, ...data.sessions],
     });
 
-    const ok = await saveSession(withTimestamp);
+    setShowManual(false);
+    setActiveSession(null);
+    setTab("home");
 
-    if (ok) {
-      setShowManual(false);
-      setActiveSession(null);
-      setTab("home");
-    } else {
-      alert(
-        "Treino salvo no celular, mas ainda não sincronizou com o Supabase. Vou tentar novamente quando o app atualizar."
-      );
-      setShowManual(false);
-      setActiveSession(null);
-      setTab("home");
-    }
+    saveSession(session);
   };
 
   const logout = async () => {
@@ -460,14 +384,10 @@ export default function Pumpi() {
     setRefreshing(true);
 
     try {
-      if (user?.id) {
-        await Promise.race([
-          loadData(user.id),
-          new Promise((resolve) =>
-            setTimeout(() => resolve("timeout"), 8000)
-          ),
-        ]);
-      }
+      await Promise.race([
+        user?.id ? loadData(user.id) : Promise.resolve(),
+        new Promise((resolve) => setTimeout(() => resolve("timeout"), 8000)),
+      ]);
     } catch (e) {
       console.error("Refresh falhou:", e);
     } finally {
@@ -476,7 +396,7 @@ export default function Pumpi() {
   };
 
   const currentSession = data.sessions.find(
-    (session) => String(session.id) === String(activeSession)
+    (s) => String(s.id) === String(activeSession)
   );
 
   const totalEx = (session) =>
@@ -485,7 +405,7 @@ export default function Pumpi() {
   const statusBadge = (session) => {
     if (session.status === "done") {
       return {
-        label: "✅ Finalizado",
+        label: "Pump entregue",
         color: T.green,
         bg: `${T.green}18`,
       };
@@ -493,18 +413,29 @@ export default function Pumpi() {
 
     if (session.status === "active") {
       return {
-        label: "🔥 Em andamento",
+        label: "Em andamento",
         color: T.accent,
         bg: `${T.accent}18`,
       };
     }
 
     return {
-      label: "⏸ Não iniciado",
+      label: "Pronto para treinar",
       color: T.textMuted,
       bg: T.bgCard,
     };
   };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+
+    if (hour < 12) return "Bom dia";
+    if (hour < 18) return "Boa tarde";
+    return "Boa noite";
+  };
+
+  const displayName =
+    profile?.username || user?.email?.split("@")[0] || "você";
 
   const sync =
     syncStatus === "saving"
@@ -532,8 +463,7 @@ export default function Pumpi() {
           spin: false,
         }
       : null;
-
-  if (!loaded) {
+    if (!loaded) {
     return (
       <div
         style={{
@@ -547,14 +477,8 @@ export default function Pumpi() {
         }}
       >
         <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-          .pumpi-spin {
-            animation: spin 1s linear infinite;
-            display: inline-block;
-          }
+          @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+          .pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}
         `}</style>
 
         <span className="pumpi-spin" style={{ fontSize: "48px" }}>
@@ -566,7 +490,7 @@ export default function Pumpi() {
             color: T.accent,
             fontSize: "13px",
             fontFamily: "'DM Sans',sans-serif",
-            fontWeight: 600,
+            fontWeight: 700,
             letterSpacing: "1px",
           }}
         >
@@ -602,23 +526,17 @@ export default function Pumpi() {
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { width: 100%; height: 100%; overflow-x: hidden; }
-        input::placeholder { color: ${T.textMuted}!important; }
-        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-        input[type=date] { color-scheme: ${T.id === "manha" ? "light" : "dark"}; }
-        select option { background: ${T.modalBg}; color: ${T.text}; }
-        textarea { font-family: 'DM Sans', sans-serif!important; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: ${T.scrollThumb}; border-radius: 2px; }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .pumpi-spin {
-          animation: spin 1s linear infinite;
-          display: inline-block;
-        }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{width:100%;height:100%;overflow-x:hidden;}
+        input::placeholder{color:${T.textMuted}!important;}
+        input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+        input[type=date]{color-scheme:${T.id === "dia" ? "light" : "dark"};}
+        select option{background:${T.modalBg};color:${T.text};}
+        textarea{font-family:'DM Sans',sans-serif!important;}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-thumb{background:${T.scrollThumb};border-radius:2px;}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .pumpi-spin{animation:spin 1s linear infinite;display:inline-block;}
       `}</style>
 
       {celebration && currentSession && (
@@ -640,7 +558,7 @@ export default function Pumpi() {
 
       <div
         style={{
-          padding: "calc(env(safe-area-inset-top) + 16px) 20px 16px",
+          padding: "calc(env(safe-area-inset-top) + 18px) 20px 16px",
           borderBottom: `1px solid ${T.divider}`,
           position: "sticky",
           top: 0,
@@ -653,6 +571,7 @@ export default function Pumpi() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: "12px",
           }}
         >
           {tab === "session" ? (
@@ -663,6 +582,7 @@ export default function Pumpi() {
                 border: "none",
                 color: T.accent,
                 fontSize: "14px",
+                fontWeight: 700,
                 cursor: "pointer",
                 fontFamily: "'DM Sans',sans-serif",
               }}
@@ -670,76 +590,92 @@ export default function Pumpi() {
               ← Voltar
             </button>
           ) : (
-            <div>
-              <div
+            <div style={{ minWidth: 0 }}>
+              <p
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  marginBottom: "2px",
+                  color: T.textMuted,
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  letterSpacing: "1.8px",
+                  textTransform: "uppercase",
+                  fontFamily: "'DM Sans',sans-serif",
+                  margin: "0 0 5px",
                 }}
               >
-                <span style={{ fontSize: "16px" }}>🍑</span>
+                PUMPI
+              </p>
 
-                <span
-                  style={{
-                    color: T.accent,
-                    fontSize: "16px",
-                    fontWeight: 800,
-                    fontFamily: "'DM Sans',sans-serif",
-                  }}
-                >
-                  Pumpi
-                </span>
-
-                {sync && (
-                  <span
-                    style={{
-                      marginLeft: "4px",
-                      background: sync.bg,
-                      color: sync.color,
-                      borderRadius: "999px",
-                      padding: "3px 8px",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      fontFamily: "'DM Sans',sans-serif",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    <span className={sync.spin ? "pumpi-spin" : ""}>
-                      {sync.icon}
-                    </span>
-                    {sync.label}
-                  </span>
-                )}
-              </div>
+              <h1
+                style={{
+                  color: T.text,
+                  fontSize: "21px",
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                  fontFamily: "'DM Sans',sans-serif",
+                  margin: 0,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {getGreeting()}, {displayName} 🍑
+              </h1>
 
               <p
                 style={{
                   color: T.textSub,
                   fontSize: "12px",
                   fontFamily: "'DM Sans',sans-serif",
+                  marginTop: "5px",
                 }}
               >
-                {profile ? `@${profile.username}` : "Progresso de Treino"}
+                Pronta para o treino de hoje?
               </p>
+
+              {sync && (
+                <span
+                  style={{
+                    marginTop: "8px",
+                    background: sync.bg,
+                    color: sync.color,
+                    borderRadius: "999px",
+                    padding: "4px 9px",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    fontFamily: "'DM Sans',sans-serif",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <span className={sync.spin ? "pumpi-spin" : ""}>
+                    {sync.icon}
+                  </span>
+                  {sync.label}
+                </span>
+              )}
             </div>
           )}
 
           {tab === "home" && (
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexShrink: 0,
+              }}
+            >
               <button
                 onClick={() => setShowManual(true)}
                 style={{
                   background: T.bgCard,
                   border: `1px solid ${T.bgCardBorder}`,
-                  borderRadius: "12px",
+                  borderRadius: "14px",
                   color: T.textSub,
-                  fontWeight: 600,
-                  fontSize: "12px",
-                  padding: "10px 12px",
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  width: "42px",
+                  height: "42px",
                   cursor: "pointer",
                   fontFamily: "'DM Sans',sans-serif",
                 }}
@@ -752,16 +688,19 @@ export default function Pumpi() {
                 style={{
                   background: T.accent,
                   border: "none",
-                  borderRadius: "12px",
+                  borderRadius: "14px",
                   color: T.accentText,
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  padding: "10px 16px",
+                  fontWeight: 800,
+                  fontSize: "12px",
+                  padding: "0 16px",
+                  height: "42px",
                   cursor: "pointer",
                   fontFamily: "'DM Sans',sans-serif",
+                  letterSpacing: "0.4px",
+                  textTransform: "uppercase",
                 }}
               >
-                + Nova
+                Iniciar
               </button>
             </div>
           )}
@@ -810,13 +749,12 @@ export default function Pumpi() {
           <span className="pumpi-spin" style={{ fontSize: "18px" }}>
             🍑
           </span>
-
           <span
             style={{
               color: T.accent,
               fontSize: "13px",
               fontFamily: "'DM Sans',sans-serif",
-              fontWeight: 600,
+              fontWeight: 700,
             }}
           >
             Atualizando...
@@ -826,11 +764,11 @@ export default function Pumpi() {
 
       <div
         style={{ padding: "20px" }}
-        onTouchStart={(event) => {
-          touchStartY.current = event.touches[0].clientY;
+        onTouchStart={(e) => {
+          touchStartY.current = e.touches[0].clientY;
         }}
-        onTouchEnd={(event) => {
-          const dy = event.changedTouches[0].clientY - touchStartY.current;
+        onTouchEnd={(e) => {
+          const dy = e.changedTouches[0].clientY - touchStartY.current;
 
           if (dy > 80 && tab !== "session" && !refreshing) {
             touchStartY.current = 0;
@@ -841,31 +779,63 @@ export default function Pumpi() {
         {tab === "home" &&
           (data.sessions.length === 0 ? (
             <div style={{ textAlign: "center", padding: "70px 20px" }}>
-              <div style={{ fontSize: "56px", marginBottom: "16px" }}>
-                🍑
-              </div>
+              <div style={{ fontSize: "58px", marginBottom: "18px" }}>🍑</div>
+
+              <h2
+                style={{
+                  color: T.text,
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  marginBottom: "8px",
+                  fontFamily: "'DM Sans',sans-serif",
+                  lineHeight: 1.12,
+                }}
+              >
+                Seu treino.
+                <br />
+                Seu pump.
+                <br />
+                Seu progresso.
+              </h2>
 
               <p
                 style={{
                   color: T.textSub,
-                  fontSize: "14px",
-                  lineHeight: 1.7,
+                  fontSize: "13px",
+                  lineHeight: 1.6,
                   fontFamily: "'DM Sans',sans-serif",
+                  marginBottom: "22px",
                 }}
               >
-                Bem-vinda ao Pumpi!
+                Comece com um treino simples.
                 <br />
-                Toque em "+ Nova" para começar.
+                O importante é aparecer.
               </p>
+
+              <button
+                onClick={newSession}
+                style={{
+                  background: T.accent,
+                  border: "none",
+                  borderRadius: "16px",
+                  color: T.accentText,
+                  fontWeight: 800,
+                  fontSize: "13px",
+                  padding: "15px 22px",
+                  cursor: "pointer",
+                  fontFamily: "'DM Sans',sans-serif",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Iniciar treino
+              </button>
             </div>
           ) : (
             sortSessions(data.sessions).map((session) => {
               const total = totalEx(session);
               const badge = statusBadge(session);
-              const duration = calcDuration(
-                session.startedAt,
-                session.finishedAt
-              );
+              const duration = calcDuration(session.startedAt, session.finishedAt);
 
               return (
                 <div
@@ -877,7 +847,7 @@ export default function Pumpi() {
                   style={{
                     background: T.bgCard,
                     border: `1px solid ${T.bgCardBorder}`,
-                    borderRadius: "16px",
+                    borderRadius: "18px",
                     padding: "16px",
                     marginBottom: "10px",
                     cursor: "pointer",
@@ -889,22 +859,28 @@ export default function Pumpi() {
                       justifyContent: "space-between",
                       alignItems: "flex-start",
                       marginBottom: total > 0 ? "10px" : "0",
+                      gap: "12px",
                     }}
                   >
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <p
                         style={{
                           color: T.text,
-                          fontWeight: 600,
+                          fontWeight: 800,
                           fontSize: "15px",
                           fontFamily: "'DM Sans',sans-serif",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
-                        {new Date(session.date).toLocaleDateString("pt-BR", {
-                          weekday: "long",
-                          day: "2-digit",
-                          month: "long",
-                        })}
+                        {formatLongDateBR
+                          ? formatLongDateBR(session.date)
+                          : new Date(session.date).toLocaleDateString("pt-BR", {
+                              weekday: "long",
+                              day: "2-digit",
+                              month: "long",
+                            })}
                       </p>
 
                       <p
@@ -926,10 +902,10 @@ export default function Pumpi() {
                       style={{
                         background: badge.bg,
                         color: badge.color,
-                        borderRadius: "8px",
-                        padding: "4px 10px",
-                        fontSize: "11px",
-                        fontWeight: 600,
+                        borderRadius: "999px",
+                        padding: "5px 10px",
+                        fontSize: "10px",
+                        fontWeight: 800,
                         fontFamily: "'DM Sans',sans-serif",
                         whiteSpace: "nowrap",
                       }}
@@ -950,12 +926,12 @@ export default function Pumpi() {
                         .slice(0, 4)
                         .map((exercise, index) => (
                           <span
-                            key={index}
+                            key={`${exercise.machine}-${index}`}
                             style={{
-                              background: T.bgCard,
-                              border: `1px solid ${T.bgCardBorder}`,
-                              borderRadius: "6px",
-                              padding: "3px 8px",
+                              background: `${T.accent}10`,
+                              border: `1px solid ${T.accent}18`,
+                              borderRadius: "999px",
+                              padding: "4px 9px",
                               color: T.textSub,
                               fontSize: "11px",
                               fontFamily: "'DM Sans',sans-serif",
@@ -971,7 +947,7 @@ export default function Pumpi() {
                           style={{
                             color: T.textMuted,
                             fontSize: "11px",
-                            padding: "3px 0",
+                            padding: "4px 0",
                             fontFamily: "'DM Sans',sans-serif",
                           }}
                         >
@@ -996,13 +972,7 @@ export default function Pumpi() {
               data={data.sessions}
             />
 
-            <div
-              style={{
-                marginTop: "24px",
-                display: "grid",
-                gap: "10px",
-              }}
-            >
+            <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
               {currentSession.status === "pending" && (
                 <button
                   onClick={() =>
@@ -1016,43 +986,41 @@ export default function Pumpi() {
                   style={{
                     background: T.accent,
                     border: "none",
-                    borderRadius: "14px",
+                    borderRadius: "16px",
                     color: T.accentText,
                     fontWeight: 800,
-                    fontSize: "15px",
+                    fontSize: "13px",
                     padding: "15px",
                     width: "100%",
                     cursor: "pointer",
                     fontFamily: "'DM Sans',sans-serif",
-                    boxShadow: `0 4px 16px ${T.accent}35`,
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
                   }}
                 >
-                  Começar treino 🍑
+                  Iniciar treino
                 </button>
               )}
 
               {currentSession.status === "active" && (
                 <button
                   onClick={finishSession}
-                  disabled={syncStatus === "saving"}
                   style={{
                     background: T.green,
                     border: "none",
-                    borderRadius: "14px",
+                    borderRadius: "16px",
                     color: "#fff",
                     fontWeight: 800,
-                    fontSize: "15px",
+                    fontSize: "13px",
                     padding: "15px",
                     width: "100%",
-                    cursor: syncStatus === "saving" ? "default" : "pointer",
+                    cursor: "pointer",
                     fontFamily: "'DM Sans',sans-serif",
-                    boxShadow: `0 4px 16px ${T.green}35`,
-                    opacity: syncStatus === "saving" ? 0.7 : 1,
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
                   }}
                 >
-                  {syncStatus === "saving"
-                    ? "Salvando treino..."
-                    : "Finalizar seu treino 🍑"}
+                  Finalizar treino
                 </button>
               )}
 
@@ -1063,14 +1031,16 @@ export default function Pumpi() {
                     style={{
                       background: T.accent,
                       border: "none",
-                      borderRadius: "14px",
+                      borderRadius: "16px",
                       color: T.accentText,
                       fontWeight: 800,
-                      fontSize: "15px",
+                      fontSize: "13px",
                       padding: "15px",
                       width: "100%",
                       cursor: "pointer",
                       fontFamily: "'DM Sans',sans-serif",
+                      letterSpacing: "0.5px",
+                      textTransform: "uppercase",
                     }}
                   >
                     Voltar para meus treinos
@@ -1143,18 +1113,13 @@ export default function Pumpi() {
         >
           {[
             { id: "home", label: "Treinos", icon: "🏠" },
-            {
-              id: "friends",
-              label: "Amigos",
-              icon: "👯",
-              badge: pendingCount,
-            },
+            { id: "friends", label: "Amigos", icon: "👯", badge: pendingCount },
             { id: "metrics", label: "Métricas", icon: "📊" },
             { id: "profile", label: "Perfil", icon: "👤" },
-          ].map((nav) => (
+          ].map((item) => (
             <button
-              key={nav.id}
-              onClick={() => setTab(nav.id)}
+              key={item.id}
+              onClick={() => setTab(item.id)}
               style={{
                 flex: 1,
                 padding: "14px 0 18px",
@@ -1167,21 +1132,16 @@ export default function Pumpi() {
                 gap: "4px",
               }}
             >
-              <div
-                style={{
-                  position: "relative",
-                  display: "inline-block",
-                }}
-              >
-                <span style={{ fontSize: "20px" }}>{nav.icon}</span>
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <span style={{ fontSize: "20px" }}>{item.icon}</span>
 
-                {nav.badge > 0 && (
+                {item.badge > 0 && (
                   <span
                     style={{
                       position: "absolute",
                       top: "-4px",
                       right: "-8px",
-                      background: "#ff6b6b",
+                      background: T.danger,
                       color: "#fff",
                       fontSize: "9px",
                       fontWeight: 800,
@@ -1190,24 +1150,24 @@ export default function Pumpi() {
                       fontFamily: "'DM Sans',sans-serif",
                     }}
                   >
-                    {nav.badge}
+                    {item.badge}
                   </span>
                 )}
               </div>
 
               <span
                 style={{
-                  color: tab === nav.id ? T.accent : T.textMuted,
+                  color: tab === item.id ? T.accent : T.textMuted,
                   fontSize: "10px",
-                  fontWeight: tab === nav.id ? 700 : 400,
+                  fontWeight: tab === item.id ? 800 : 500,
                   fontFamily: "'DM Sans',sans-serif",
                   letterSpacing: "0.5px",
                 }}
               >
-                {nav.label}
+                {item.label}
               </span>
 
-              {tab === nav.id && (
+              {tab === item.id && (
                 <div
                   style={{
                     width: "20px",
