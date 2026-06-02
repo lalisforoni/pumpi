@@ -1,22 +1,39 @@
-export function calcDuration(a, b) {
-  if (!a || !b) return null;
-  const m = Math.floor((b - a) / 60000);
-  const hh = Math.floor(m / 60);
-  return hh > 0 ? `${hh}h ${m % 60}min` : `${m}min`;
+export function calcDuration(start, end) {
+  if (!start || !end) return null;
+
+  const minutes = Math.floor((end - start) / 60000);
+  const hours = Math.floor(minutes / 60);
+
+  return hours > 0
+    ? `${hours}h ${minutes % 60}min`
+    : `${minutes}min`;
 }
 
-export function useTimer(startedAt, active) {
-  const { useState, useEffect } = require("react");
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!active || !startedAt) return;
-    const upd = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    upd();
-    const id = setInterval(upd, 1000);
-    return () => clearInterval(id);
-  }, [active, startedAt]);
-  const s = elapsed % 60, m = Math.floor(elapsed / 60) % 60, hh = Math.floor(elapsed / 3600);
-  return hh > 0
-    ? `${String(hh).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-    : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+export function calcMinutes(start, end) {
+  if (!start || !end) return 0;
+
+  return Math.max(0, Math.floor((end - start) / 60000));
+}
+
+export function withTimeout(promise, ms, label = "timeout") {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(label)), ms)
+  );
+
+  return Promise.race([promise, timeout]);
+}
+
+export function formatDateBR(date) {
+  return new Date(date).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+export function formatLongDateBR(date) {
+  return new Date(date).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+  });
 }
