@@ -10,6 +10,7 @@ import {
   sortSessions,
 } from "./lib/storage";
 import { getTimeTheme } from "./lib/themes";
+import { shouldSyncSession, markSessionUpdated } from "./lib/sync";
 import { calcDuration, formatLongDateBR } from "./lib/utils";
 
 import LoginScreen from "./components/LoginScreen";
@@ -284,27 +285,23 @@ export default function Pumpi() {
   };
 
   const updateSession = async (updated) => {
-    const withTimestamp = {
-      ...updated,
-      updatedAt: Date.now(),
-    };
+  const withTimestamp = markSessionUpdated(updated);
 
-    await save({
-      ...data,
-      sessions: data.sessions.map((session) =>
-        String(session.id) === String(withTimestamp.id)
-          ? withTimestamp
-          : session
-      ),
-    });
+  await save({
+    ...data,
+    sessions: data.sessions.map((session) =>
+      String(session.id) === String(withTimestamp.id)
+        ? withTimestamp
+        : session
+    ),
+  });
 
-    setActiveSession(withTimestamp.id);
-  };
+  setActiveSession(withTimestamp.id);
 
-  const finishSession = async () => {
-    const session = data.sessions.find(
-      (s) => String(s.id) === String(activeSession)
-    );
+  if (shouldSyncSession(withTimestamp)) {
+    saveSession(withTimestamp);
+  }
+};
 
     if (!session) return;
 
