@@ -2,6 +2,7 @@ export const STORAGE_KEY = "pumpi_v1";
 export const PENDING_KEY = "pumpi_pending_sync";
 export const DELETED_KEY = "pumpi_deleted_sessions";
 export const WORKOUT_DAYS_KEY = "pumpi_workout_days";
+export const FRIENDS_CACHE_KEY = "pumpi_friends_cache";
 
 const DEFAULT_WORKOUT_DAYS = [1, 2, 3, 4, 5];
 
@@ -31,16 +32,21 @@ export function setDeletedSessionIds(ids) {
 }
 
 export function addDeletedSessionId(id) {
-  setDeletedSessionIds([...getDeletedSessionIds(), String(id)]);
+  setDeletedSessionIds([
+    ...getDeletedSessionIds(),
+    String(id),
+  ]);
 }
 
 export function removeDeletedSessionId(id) {
   setDeletedSessionIds(
-    getDeletedSessionIds().filter((x) => x !== String(id))
+    getDeletedSessionIds().filter(
+      (x) => x !== String(id)
+    )
   );
 }
 
-// ── Pending sync ─────────────────────────────────────────────
+// ── Pending Sync ─────────────────────────────────────────────
 export function getPendingSyncIds() {
   return readJSON(PENDING_KEY, []).map(String);
 }
@@ -50,12 +56,17 @@ export function setPendingSyncIds(ids) {
 }
 
 export function addPendingSyncId(id) {
-  setPendingSyncIds([...getPendingSyncIds(), String(id)]);
+  setPendingSyncIds([
+    ...getPendingSyncIds(),
+    String(id),
+  ]);
 }
 
 export function removePendingSyncId(id) {
   setPendingSyncIds(
-    getPendingSyncIds().filter((x) => x !== String(id))
+    getPendingSyncIds().filter(
+      (x) => x !== String(id)
+    )
   );
 }
 
@@ -65,24 +76,49 @@ export function clearPendingSyncIds() {
   } catch {}
 }
 
-// ── Workout days ─────────────────────────────────────────────
+// ── Workout Days ─────────────────────────────────────────────
 export function getWorkoutDays() {
-  return readJSON(WORKOUT_DAYS_KEY, DEFAULT_WORKOUT_DAYS);
+  return readJSON(
+    WORKOUT_DAYS_KEY,
+    DEFAULT_WORKOUT_DAYS
+  );
 }
 
 export function saveWorkoutDays(days) {
   writeJSON(WORKOUT_DAYS_KEY, days);
 }
 
-// ── Local sessions ───────────────────────────────────────────
+// ── Friends Cache ────────────────────────────────────────────
+export function getFriendsCache() {
+  return readJSON(FRIENDS_CACHE_KEY, null);
+}
+
+export function saveFriendsCache(data) {
+  writeJSON(FRIENDS_CACHE_KEY, data);
+}
+
+export function clearFriendsCache() {
+  try {
+    localStorage.removeItem(FRIENDS_CACHE_KEY);
+  } catch {}
+}
+
+// ── Local Sessions ───────────────────────────────────────────
 export function getLocalSessions() {
-  const local = readJSON(STORAGE_KEY, { sessions: [] });
+  const local = readJSON(STORAGE_KEY, {
+    sessions: [],
+  });
+
   return sortSessions(local.sessions || []);
 }
 
 export function saveLocalSessions(sessions) {
   const sorted = sortSessions(sessions || []);
-  writeJSON(STORAGE_KEY, { sessions: sorted });
+
+  writeJSON(STORAGE_KEY, {
+    sessions: sorted,
+  });
+
   return sorted;
 }
 
@@ -92,11 +128,13 @@ export function clearLocalSessions() {
   } catch {}
 }
 
-// ── Session helpers ──────────────────────────────────────────
+// ── Session Helpers ──────────────────────────────────────────
 export function getSessionSortTime(session) {
   const dateTime = Date.parse(session?.date);
 
-  if (!Number.isNaN(dateTime)) return dateTime;
+  if (!Number.isNaN(dateTime)) {
+    return dateTime;
+  }
 
   return (
     Number(
@@ -111,7 +149,8 @@ export function getSessionSortTime(session) {
 export function sortSessions(sessions = []) {
   return [...sessions].sort((a, b) => {
     const diff =
-      getSessionSortTime(b) - getSessionSortTime(a);
+      getSessionSortTime(b) -
+      getSessionSortTime(a);
 
     if (diff !== 0) return diff;
 
@@ -139,16 +178,27 @@ function mergeSessionPair(remote, local) {
       0
   );
 
-  return remoteUpdated >= localUpdated ? remote : local;
+  return remoteUpdated >= localUpdated
+    ? remote
+    : local;
 }
 
-export function mergeSessions(remote = [], local = []) {
+export function mergeSessions(
+  remote = [],
+  local = []
+) {
   const remoteById = new Map(
-    remote.map((session) => [String(session.id), session])
+    remote.map((session) => [
+      String(session.id),
+      session,
+    ])
   );
 
   const localById = new Map(
-    local.map((session) => [String(session.id), session])
+    local.map((session) => [
+      String(session.id),
+      session,
+    ])
   );
 
   const ids = new Set([
@@ -158,7 +208,10 @@ export function mergeSessions(remote = [], local = []) {
 
   return sortSessions(
     [...ids].map((id) =>
-      mergeSessionPair(remoteById.get(id), localById.get(id))
+      mergeSessionPair(
+        remoteById.get(id),
+        localById.get(id)
+      )
     )
   );
 }
