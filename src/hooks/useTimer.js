@@ -1,13 +1,30 @@
 import { useEffect, useState } from "react";
 
 export default function useTimer(startedAt, active) {
-  const [elapsed, setElapsed] = useState(0);
+  const getElapsed = () => {
+    if (!active || !startedAt) return 0;
+
+    return Math.max(
+      0,
+      Math.floor((Date.now() - Number(startedAt)) / 1000)
+    );
+  };
+
+  const [elapsed, setElapsed] = useState(getElapsed);
 
   useEffect(() => {
-    if (!active || !startedAt) return;
+    if (!active || !startedAt) {
+      setElapsed(0);
+      return;
+    }
 
     const update = () => {
-      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+      setElapsed(
+        Math.max(
+          0,
+          Math.floor((Date.now() - Number(startedAt)) / 1000)
+        )
+      );
     };
 
     update();
