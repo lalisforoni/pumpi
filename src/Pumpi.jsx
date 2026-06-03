@@ -282,6 +282,7 @@ const newSession = async () => {
 
   setActiveSession(session.id);
   setTab("session");
+  saveSession(session);
 };
 
 const updateSession = async (updated) => {
