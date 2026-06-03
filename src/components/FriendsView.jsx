@@ -32,15 +32,31 @@ export default function FriendsView({ theme, user, sessions }) {
   const [battleDetail, setBattleDetail] = useState(null);
   const [loadingBattle, setLoadingBattle] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+useEffect(() => {
+  let alive = true;
 
+  if (user?.id && tab === "friends") {
     refreshFriends(alive);
+  }
 
-    return () => {
-      alive = false;
-    };
-  }, [user?.id]);
+  return () => {
+    alive = false;
+  };
+}, [user?.id, tab]);
+
+useEffect(() => {
+  const handleFocus = () => {
+    if (user?.id && tab === "friends") {
+      refreshFriends();
+    }
+  };
+
+  window.addEventListener("focus", handleFocus);
+
+  return () => {
+    window.removeEventListener("focus", handleFocus);
+  };
+}, [user?.id, tab]);
 
   const refreshFriends = async (alive = true) => {
     if (!user?.id) return;
