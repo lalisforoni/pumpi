@@ -304,6 +304,7 @@ export default function SessionView({
               >
                 Editar
               </button>
+                )
             )}
           </div>
         </div>
