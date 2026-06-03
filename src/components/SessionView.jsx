@@ -21,22 +21,16 @@ export default function SessionView({
   const readonly = session.status === "done" && !editMode;
   const isActive = session.status === "active";
 
-  const isManualReopened =
-    session.manual &&
-    session.status === "active" &&
-    session.finishedAt === null;
-
-  const timer = useTimer(
-    session.startedAt,
-    isActive && !isManualReopened
-  );
-
+  const timer = useTimer(session.startedAt, isActive);
   const duration = calcDuration(session.startedAt, session.finishedAt);
 
   const addExercise = (group, machine) => {
+    const cleanMachine = String(machine || "").trim();
+    if (!cleanMachine) return;
+
     const allExercises = (data || [])
       .flatMap((s) => [...(s.lower || []), ...(s.upper || [])])
-      .filter((exercise) => exercise.machine === machine);
+      .filter((exercise) => exercise.machine === cleanMachine);
 
     const allHistory = allExercises
       .flatMap((exercise) => exercise.weightHistory || [])
@@ -46,7 +40,7 @@ export default function SessionView({
 
     const newExercise = {
       id: Date.now(),
-      machine,
+      machine: cleanMachine,
       weight: lastEntry?.weight || "",
       rp: lastEntry?.rp || "",
       reps: lastEntry?.reps || "",
@@ -67,9 +61,7 @@ export default function SessionView({
     onUpdate({
       ...session,
       [group]: (session[group] || []).map((exercise) =>
-        exercise.id === id
-          ? { ...exercise, ...updatedExercise }
-          : exercise
+        exercise.id === id ? { ...exercise, ...updatedExercise } : exercise
       ),
       updatedAt: Date.now(),
     });
@@ -88,6 +80,7 @@ export default function SessionView({
   const handleSaveEdit = async () => {
     await onSave({
       ...session,
+      status: "done",
       updatedAt: Date.now(),
     });
 
@@ -95,18 +88,8 @@ export default function SessionView({
   };
 
   const groups = [
-    {
-      key: "lower",
-      label: "Lower Body",
-      emoji: "🦵",
-      color: T.green,
-    },
-    {
-      key: "upper",
-      label: "Upper Body",
-      emoji: "💪",
-      color: T.blue,
-    },
+    { key: "lower", label: "Lower Body", emoji: "🦵", color: T.green },
+    { key: "upper", label: "Upper Body", emoji: "💪", color: T.blue },
   ];
 
   const histExercise = histModal
@@ -129,10 +112,8 @@ export default function SessionView({
       : session.status === "active"
       ? {
           eyebrow: "Treino em andamento",
-          title: isManualReopened ? "Editando treino" : timer || "00:00",
-          subtitle: isManualReopened
-            ? "Edite e finalize quando quiser."
-            : "Continue. Um exercício por vez.",
+          title: timer || "00:00",
+          subtitle: "Continue. Um exercício por vez.",
           icon: "🔥",
           color: T.accent,
           bg: `${T.accent}10`,
@@ -203,21 +184,15 @@ export default function SessionView({
               <p
                 style={{
                   color: T.text,
-                  fontSize:
-                    session.status === "active" && !isManualReopened
-                      ? "25px"
-                      : "20px",
+                  fontSize: session.status === "active" ? "25px" : "20px",
                   fontWeight: 800,
                   margin: 0,
                   fontFamily:
-                    session.status === "active" && !isManualReopened
+                    session.status === "active"
                       ? "'DM Mono',monospace"
                       : "'DM Sans',sans-serif",
                   lineHeight: 1.1,
-                  letterSpacing:
-                    session.status === "active" && !isManualReopened
-                      ? "1px"
-                      : "-0.3px",
+                  letterSpacing: session.status === "active" ? "1px" : "-0.3px",
                 }}
               >
                 {statusInfo.title}
