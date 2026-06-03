@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-function withTimeout(promise, ms = 7000) {
+function withTimeout(promise, ms = 1500) {
   return Promise.race([
     promise,
     new Promise((_, reject) =>
