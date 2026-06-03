@@ -129,7 +129,7 @@ export default function SessionView({
       : session.status === "active"
       ? {
           eyebrow: "Treino em andamento",
-          title: isManualReopened ? "Editando treino" : timer,
+          title: isManualReopened ? "Editando treino" : timer || "00:00",
           subtitle: isManualReopened
             ? "Edite e finalize quando quiser."
             : "Continue. Um exercício por vez.",
