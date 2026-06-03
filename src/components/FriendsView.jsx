@@ -292,7 +292,7 @@ useEffect(() => {
             }}
           >
             {item === "friends"
-              ? `Amigas${pending.length > 0 ? ` (${pending.length})` : ""}`
+              ? `Amigos${pending.length > 0 ? ` (${pending.length})` : ""}`
               : item === "battles"
               ? "Progresso"
               : "Adicionar"}
@@ -310,7 +310,7 @@ useEffect(() => {
               margin: 0,
             }}
           >
-            Carregando amigas...
+            Carregando amigos...
           </p>
         </Card>
       )}
