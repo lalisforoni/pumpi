@@ -302,7 +302,7 @@ export default function SessionView({
                   fontFamily: "'DM Sans',sans-serif",
                 }}
               >
-                Reabrir
+                Editar
               </button>
             )}
           </div>
