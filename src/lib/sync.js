@@ -1,5 +1,5 @@
 export function shouldSyncSession(session) {
-  return session?.status === "active" || session?.status === "done";
+  return ["pending", "active", "done"].includes(session?.status);
 }
 
 export function markSessionUpdated(session) {
