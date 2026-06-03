@@ -54,6 +54,12 @@ export default function SessionView({
       weightHistory: [],
     };
 
+    onUpdate({
+      ...session,
+      [group]: [...(session[group] || []), newExercise],
+      updatedAt: Date.now(),
+    });
+
     setModal(null);
   };
 
@@ -114,9 +120,7 @@ export default function SessionView({
       ? {
           eyebrow: editMode ? "Modo edição" : "Pump entregue",
           title: editMode ? "Ajuste seu treino" : "Treino concluído",
-          subtitle: duration
-            ? `Duração: ${duration}`
-            : "Treino registrado.",
+          subtitle: duration ? `Duração: ${duration}` : "Treino registrado.",
           icon: "🍑",
           color: T.green,
           bg: `${T.green}10`,
@@ -199,7 +203,10 @@ export default function SessionView({
               <p
                 style={{
                   color: T.text,
-                  fontSize: session.status === "active" && !isManualReopened ? "25px" : "20px",
+                  fontSize:
+                    session.status === "active" && !isManualReopened
+                      ? "25px"
+                      : "20px",
                   fontWeight: 800,
                   margin: 0,
                   fontFamily:
@@ -231,8 +238,8 @@ export default function SessionView({
           </div>
 
           <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-            {session.status === "done" && session.manual && (
-              editMode ? (
+            {session.status === "done" &&
+              (editMode ? (
                 <button
                   onClick={handleSaveEdit}
                   style={{
@@ -266,46 +273,7 @@ export default function SessionView({
                 >
                   Editar
                 </button>
-              )
-            )}
-
-            {session.status === "done" && !session.manual && (
-              editMode ? (
-                <button
-                  onClick={handleSaveEdit}
-                  style={{
-                    background: T.green,
-                    border: "none",
-                    borderRadius: "12px",
-                    color: "#fff",
-                    fontWeight: 800,
-                    fontSize: "12px",
-                    padding: "9px 13px",
-                    cursor: "pointer",
-                    fontFamily: "'DM Sans',sans-serif",
-                  }}
-    >
-      Salvar
-    </button>
-  ) : (
-    <button
-      onClick={() => setEditMode(true)}
-                style={{
-                  background: T.bgCard,
-                  border: `1px solid ${T.bgCardBorder}`,
-                  borderRadius: "12px",
-                  color: T.textSub,
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  padding: "9px 12px",
-                  cursor: "pointer",
-                  fontFamily: "'DM Sans',sans-serif",
-                }}
-              >
-                Editar
-              </button>
-                )
-            )}
+              ))}
           </div>
         </div>
       </div>
@@ -411,6 +379,7 @@ export default function SessionView({
           existingMachines={(session[modal] || []).map(
             (exercise) => exercise.machine
           )}
+          allSessions={data || []}
         />
       )}
 
