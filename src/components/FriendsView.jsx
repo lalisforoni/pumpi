@@ -300,20 +300,20 @@ useEffect(() => {
         ))}
       </div>
 
-      {loading && (
-        <Card>
-          <p
-            style={{
-              color: T.textSub,
-              fontSize: "13px",
-              fontFamily: "'DM Sans',sans-serif",
-              margin: 0,
-            }}
-          >
-            Carregando amigos...
-          </p>
-        </Card>
-      )}
+      {loading && friends.length === 0 && pending.length === 0 && sent.length === 0 && (
+  <Card>
+    <p
+      style={{
+        color: T.textSub,
+        fontSize: "13px",
+        fontFamily: "'DM Sans',sans-serif",
+        margin: 0,
+      }}
+    >
+      Carregando amigos...
+    </p>
+  </Card>
+)}
 
       {tab === "friends" && (
         <FriendsList
