@@ -54,12 +54,6 @@ export default function SessionView({
       weightHistory: [],
     };
 
-    onUpdate({
-      ...session,
-      [group]: [...(session[group] || []), newExercise],
-      updatedAt: Date.now(),
-    });
-
     setModal(null);
   };
 
@@ -276,15 +270,26 @@ export default function SessionView({
             )}
 
             {session.status === "done" && !session.manual && (
-              <button
-                onClick={() =>
-                  onUpdate({
-                    ...session,
-                    status: "active",
-                    finishedAt: null,
-                    updatedAt: Date.now(),
-                  })
-                }
+              editMode ? (
+                <button
+                  onClick={handleSaveEdit}
+                  style={{
+                    background: T.green,
+                    border: "none",
+                    borderRadius: "12px",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: "12px",
+                    padding: "9px 13px",
+                    cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif",
+                  }}
+    >
+      Salvar
+    </button>
+  ) : (
+    <button
+      onClick={() => setEditMode(true)}
                 style={{
                   background: T.bgCard,
                   border: `1px solid ${T.bgCardBorder}`,
