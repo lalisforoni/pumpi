@@ -9,6 +9,8 @@ import {
   sendFriendRequest,
 } from "../lib/friendsApi";
 
+import { getFriendsCache, saveFriendsCache } from "../lib/storage";
+
 import FriendsList from "./friends/FriendsList";
 import AddFriend from "./friends/AddFriend";
 import BattlesView from "./friends/BattlesView";
@@ -32,31 +34,43 @@ export default function FriendsView({ theme, user, sessions }) {
   const [battleDetail, setBattleDetail] = useState(null);
   const [loadingBattle, setLoadingBattle] = useState(false);
 
-useEffect(() => {
-  let alive = true;
+  useEffect(() => {
+    const cached = getFriendsCache();
 
-  if (user?.id && tab === "friends") {
-    refreshFriends(alive);
-  }
-
-  return () => {
-    alive = false;
-  };
-}, [user?.id, tab]);
-
-useEffect(() => {
-  const handleFocus = () => {
-    if (user?.id && tab === "friends") {
-      refreshFriends();
+    if (cached && (!cached.userId || cached.userId === user?.id)) {
+      setFriends(cached.friends || []);
+      setPending(cached.pending || []);
+      setSent(cached.sent || []);
+      setBattles(cached.battles || []);
+      setSuggestions(cached.suggestions || []);
     }
-  };
+  }, [user?.id]);
 
-  window.addEventListener("focus", handleFocus);
+  useEffect(() => {
+    let alive = true;
 
-  return () => {
-    window.removeEventListener("focus", handleFocus);
-  };
-}, [user?.id, tab]);
+    if (user?.id) {
+      refreshFriends(alive);
+    }
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user?.id) {
+        refreshFriends();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [user?.id]);
 
   const refreshFriends = async (alive = true) => {
     if (!user?.id) return;
@@ -68,21 +82,30 @@ useEffect(() => {
 
       if (!alive) return;
 
-      setFriends(result.friends);
-      setPending(result.pending);
-      setSent(result.sent);
-      setBattles(result.battles);
-      setSuggestions(result.suggestions);
+      const cachedResult = {
+        ...result,
+        userId: user.id,
+      };
+
+      setFriends(result.friends || []);
+      setPending(result.pending || []);
+      setSent(result.sent || []);
+      setBattles(result.battles || []);
+      setSuggestions(result.suggestions || []);
+
+      saveFriendsCache(cachedResult);
     } catch (error) {
       console.error("refreshFriends falhou:", error.message);
 
-      if (!alive) return;
+      const cached = getFriendsCache();
 
-      setFriends([]);
-      setPending([]);
-      setSent([]);
-      setBattles([]);
-      setSuggestions([]);
+      if (cached && (!cached.userId || cached.userId === user?.id)) {
+        setFriends(cached.friends || []);
+        setPending(cached.pending || []);
+        setSent(cached.sent || []);
+        setBattles(cached.battles || []);
+        setSuggestions(cached.suggestions || []);
+      }
     } finally {
       if (alive) setLoading(false);
     }
@@ -221,7 +244,7 @@ useEffect(() => {
 
       setBattleDetail({
         error:
-          "Não consegui carregar os dados da sua amiga. Verifique as permissões da tabela sessions no Supabase.",
+          "Não consegui carregar os dados do seu amigo. Verifique as permissões da tabela sessions no Supabase.",
       });
     } finally {
       setLoadingBattle(false);
@@ -259,6 +282,12 @@ useEffect(() => {
       {children}
     </div>
   );
+
+  const hasAnyFriendData =
+    friends.length > 0 ||
+    pending.length > 0 ||
+    sent.length > 0 ||
+    battles.length > 0;
 
   return (
     <div>
@@ -300,20 +329,20 @@ useEffect(() => {
         ))}
       </div>
 
-      {loading && friends.length === 0 && pending.length === 0 && sent.length === 0 && (
-  <Card>
-    <p
-      style={{
-        color: T.textSub,
-        fontSize: "13px",
-        fontFamily: "'DM Sans',sans-serif",
-        margin: 0,
-      }}
-    >
-      Carregando amigos...
-    </p>
-  </Card>
-)}
+      {loading && !hasAnyFriendData && (
+        <Card>
+          <p
+            style={{
+              color: T.textSub,
+              fontSize: "13px",
+              fontFamily: "'DM Sans',sans-serif",
+              margin: 0,
+            }}
+          >
+            Carregando amigos...
+          </p>
+        </Card>
+      )}
 
       {tab === "friends" && (
         <FriendsList
