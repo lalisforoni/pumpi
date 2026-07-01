@@ -122,7 +122,8 @@ return () => {
   alive = false;
   subscription.unsubscribe();
 };  
-
+  }, []);
+  
   const loadData = async (uid) => {
     try {
       const { data: prof } = await supabase
