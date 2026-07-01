@@ -20,6 +20,7 @@ import MetricsView from "./components/MetricsView";
 import ProfileView from "./components/ProfileView";
 import ManualSessionModal from "./components/ManualSessionModal";
 import CelebrationModal from "./components/CelebrationModal";
+import WorkoutPlansView from "./components/WorkoutPlansView";
 
 export default function Pumpi() {
   const [data, setData] = useState({ sessions: [] });
@@ -271,6 +272,42 @@ export default function Pumpi() {
       lower: [],
       upper: [],
       fromTemplate: false,
+      updatedAt: now,
+    };
+
+    await save({
+      ...data,
+      sessions: [session, ...data.sessions],
+    });
+
+    setActiveSession(session.id);
+    setTab("session");
+
+    saveSession(session);
+  };
+
+  const startSessionFromPlan = async (plan) => {
+    const now = Date.now();
+
+    const cloneExercises = (items = []) =>
+      items.map((exercise, index) => ({
+        ...exercise,
+        id: now + index + Math.floor(Math.random() * 1000),
+        completed: false,
+        weightHistory: exercise.weightHistory || [],
+      }));
+
+    const session = {
+      id: now,
+      date: new Date(now).toISOString(),
+      status: "active",
+      startedAt: now,
+      finishedAt: null,
+      lower: cloneExercises(plan.lower || []),
+      upper: cloneExercises(plan.upper || []),
+      fromTemplate: true,
+      templateId: plan.id,
+      templateName: plan.name,
       updatedAt: now,
     };
 
@@ -1052,6 +1089,16 @@ export default function Pumpi() {
           </>
         )}
 
+        {tab === "plans" && (
+          <div style={{ paddingBottom: "100px" }}>
+            <WorkoutPlansView
+              theme={T}
+              sessions={data.sessions}
+              onStartFromPlan={startSessionFromPlan}
+            />
+          </div>
+        )}
+
         {tab === "metrics" && (
           <div style={{ paddingBottom: "100px" }}>
             <MetricsView sessions={data.sessions} theme={T} />
@@ -1097,6 +1144,7 @@ export default function Pumpi() {
           {[
             { id: "home", label: "Treinos", icon: "🏠" },
             { id: "friends", label: "Amigos", icon: "👯", badge: pendingCount },
+            { id: "plans", label: "Fichas", icon: "📋" },
             { id: "metrics", label: "Métricas", icon: "📊" },
             { id: "profile", label: "Perfil", icon: "👤" },
           ].map((item) => (
