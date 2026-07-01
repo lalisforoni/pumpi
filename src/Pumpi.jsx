@@ -983,30 +983,7 @@ const deleteSession = async (id) => {
             />
 
             <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
-              {currentSession.status === "pending" && (
-                <button
-                  onClick={() =>
-                    updateSession({
-                      ...currentSession,
-                      status: "active",
-                      startedAt: Date.now(),
-                      updatedAt: Date.now(),
-                    })
-                  }
-                  style={{
-                    background: T.accent,
-                    border: "none",
-                    borderRadius: "16px",
-                    color: T.accentText,
-                    fontWeight: 800,
-                    fontSize: "13px",
-                    padding: "15px",
-                    width: "100%",
-                    cursor: "pointer",
-                    fontFamily: "'DM Sans',sans-serif",
-                    letterSpacing: "0.5px",
-                    textTransform: "uppercase",
-                  }}
+              
                 >
                   Iniciar treino
                 </button>
