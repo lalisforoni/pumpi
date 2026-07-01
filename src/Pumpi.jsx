@@ -35,6 +35,8 @@ export default function Pumpi() {
   const [pendingCount, setPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
+  const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState(null);
+  
 
   const touchStartY = useRef(0);
   const T = theme;
@@ -638,10 +640,7 @@ export default function Pumpi() {
               {currentSession && (
                 <button
                   onClick={() => {
-                    const ok = window.confirm(
-                      "Tem certeza que quer excluir este treino?"
-                    );
-                    if (ok) deleteSession(currentSession.id);
+                    setConfirmDeleteSessionId(currentSession.id);
                   }}
                   style={{
                     background: "transparent",
@@ -1210,6 +1209,101 @@ export default function Pumpi() {
               )}
             </button>
           ))}
+        </div>
+            )}
+
+      {confirmDeleteSessionId && (
+        <div
+          onClick={() => setConfirmDeleteSessionId(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.72)",
+            zIndex: 600,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: T.modalBg,
+              border: `1px solid ${T.bgCardBorder}`,
+              borderRadius: "24px 24px 0 0",
+              padding: "24px 20px 40px",
+              width: "100%",
+              maxWidth: "480px",
+            }}
+          >
+            <p
+              style={{
+                color: T.text,
+                fontSize: "18px",
+                fontWeight: 800,
+                marginBottom: "8px",
+                fontFamily: "'DM Sans',sans-serif",
+              }}
+            >
+              Excluir treino?
+            </p>
+
+            <p
+              style={{
+                color: T.textSub,
+                fontSize: "13px",
+                lineHeight: 1.5,
+                marginBottom: "18px",
+                fontFamily: "'DM Sans',sans-serif",
+              }}
+            >
+              Essa ação remove o treino do app e do Supabase quando sincronizar.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                const id = confirmDeleteSessionId;
+                setConfirmDeleteSessionId(null);
+                deleteSession(id);
+              }}
+              style={{
+                width: "100%",
+                background: T.danger,
+                border: "none",
+                borderRadius: "14px",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: "13px",
+                padding: "14px",
+                cursor: "pointer",
+                fontFamily: "'DM Sans',sans-serif",
+                marginBottom: "10px",
+              }}
+            >
+              Excluir treino
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmDeleteSessionId(null)}
+              style={{
+                width: "100%",
+                background: T.bgCard,
+                border: `1px solid ${T.bgCardBorder}`,
+                borderRadius: "14px",
+                color: T.text,
+                fontWeight: 700,
+                fontSize: "13px",
+                padding: "14px",
+                cursor: "pointer",
+                fontFamily: "'DM Sans',sans-serif",
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
     </div>
