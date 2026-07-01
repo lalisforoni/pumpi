@@ -59,56 +59,69 @@ export default function Pumpi() {
   useEffect(() => {
     let alive = true;
 
-    const init = async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+  const init = async () => {
+  try {
+    const local = localStorage.getItem(STORAGE_KEY);
 
-        if (!alive) return;
+    if (local) {
+      setData(JSON.parse(local));
+    }
 
-        if (session?.user) {
-          setUser(session.user);
-          await loadData(session.user.id);
-        } else {
-          const local = localStorage.getItem(STORAGE_KEY);
-          if (local) setData(JSON.parse(local));
-        }
-      } catch (e) {
-        console.error("Init falhou:", e?.message || e);
-
-        try {
-          const local = localStorage.getItem(STORAGE_KEY);
-          if (local) setData(JSON.parse(local));
-        } catch {}
-      } finally {
-        if (alive) setLoaded(true);
-      }
-    };
-
-    init();
+    if (alive) {
+      setLoaded(true);
+    }
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        setUser(session.user);
-        await loadData(session.user.id);
-      }
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      if (event === "SIGNED_OUT") {
-        setUser(null);
-        setProfile(null);
-        setData({ sessions: [] });
-        setPendingCount(0);
-      }
-    });
+    if (!alive) return;
 
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+    if (session?.user) {
+      setUser(session.user);
+      loadData(session.user.id);
+    }
+  } catch (e) {
+    console.error("Init falhou:", e?.message || e);
+
+    try {
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) setData(JSON.parse(local));
+    } catch {}
+
+    if (alive) {
+      setLoaded(true);
+    }
+  }
+};
+
+init();
+
+const {
+  data: { subscription },
+} = supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === "SIGNED_IN" && session?.user) {
+    setUser(session.user);
+
+    const local = localStorage.getItem(STORAGE_KEY);
+    if (local) setData(JSON.parse(local));
+
+    setLoaded(true);
+    loadData(session.user.id);
+  }
+
+  if (event === "SIGNED_OUT") {
+    setUser(null);
+    setProfile(null);
+    setData({ sessions: [] });
+    setPendingCount(0);
+  }
+});
+
+return () => {
+  alive = false;
+  subscription.unsubscribe();
+};  
 
   const loadData = async (uid) => {
     try {
