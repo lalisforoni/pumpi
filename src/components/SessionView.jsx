@@ -20,9 +20,25 @@ export default function SessionView({
 
   const readonly = session.status === "done" && !editMode;
   const isActive = session.status === "active";
+  const isTemplateSession = session.fromTemplate === true;
 
   const timer = useTimer(session.startedAt, isActive);
   const duration = calcDuration(session.startedAt, session.finishedAt);
+
+  const allSessionExercises = [
+    ...(session.lower || []),
+    ...(session.upper || []),
+  ];
+
+  const totalTemplateExercises = allSessionExercises.length;
+  const completedTemplateExercises = allSessionExercises.filter(
+    (exercise) => exercise.completed
+  ).length;
+
+  const templateProgress =
+    totalTemplateExercises > 0
+      ? Math.round((completedTemplateExercises / totalTemplateExercises) * 100)
+      : 0;
 
   const addExercise = (group, machine) => {
     const cleanMachine = String(machine || "").trim();
@@ -45,6 +61,7 @@ export default function SessionView({
       rp: lastEntry?.rp || "",
       reps: lastEntry?.reps || "",
       series: lastEntry?.series || "",
+      completed: false,
       weightHistory: [],
     };
 
@@ -64,6 +81,14 @@ export default function SessionView({
         exercise.id === id ? { ...exercise, ...updatedExercise } : exercise
       ),
       updatedAt: Date.now(),
+    });
+  };
+
+  const toggleExerciseCompleted = (group, exercise) => {
+    if (!isTemplateSession || readonly) return;
+
+    updateExercise(group, exercise.id, {
+      completed: !exercise.completed,
     });
   };
 
@@ -111,10 +136,14 @@ export default function SessionView({
         }
       : session.status === "active"
       ? {
-          eyebrow: "Treino em andamento",
+          eyebrow: isTemplateSession
+            ? session.templateName || "Treino por ficha"
+            : "Treino em andamento",
           title: timer || "00:00",
-          subtitle: "Continue. Um exercício por vez.",
-          icon: "🔥",
+          subtitle: isTemplateSession
+            ? `${completedTemplateExercises}/${totalTemplateExercises} exercícios concluídos`
+            : "Continue. Um exercício por vez.",
+          icon: isTemplateSession ? "📋" : "🔥",
           color: T.accent,
           bg: `${T.accent}10`,
           border: `${T.accent}30`,
@@ -134,7 +163,7 @@ export default function SessionView({
       <div
         style={{
           borderRadius: "20px",
-          marginBottom: "22px",
+          marginBottom: "14px",
           border: `1px solid ${statusInfo.border}`,
           background: statusInfo.bg,
           padding: "16px",
@@ -253,6 +282,70 @@ export default function SessionView({
         </div>
       </div>
 
+      {isTemplateSession && totalTemplateExercises > 0 && (
+        <div
+          style={{
+            background: T.bgCard,
+            border: `1px solid ${T.bgCardBorder}`,
+            borderRadius: "16px",
+            padding: "14px",
+            marginBottom: "22px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "8px",
+            }}
+          >
+            <p
+              style={{
+                color: T.text,
+                fontSize: "13px",
+                fontWeight: 800,
+                margin: 0,
+                fontFamily: "'DM Sans',sans-serif",
+              }}
+            >
+              Progresso da ficha
+            </p>
+
+            <p
+              style={{
+                color: T.accent,
+                fontSize: "12px",
+                fontWeight: 800,
+                margin: 0,
+                fontFamily: "'DM Mono',monospace",
+              }}
+            >
+              {completedTemplateExercises}/{totalTemplateExercises}
+            </p>
+          </div>
+
+          <div
+            style={{
+              height: "8px",
+              background: T.bgCardBorder,
+              borderRadius: "999px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${templateProgress}%`,
+                height: "100%",
+                background: T.accent,
+                borderRadius: "999px",
+                transition: "width .3s ease",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {groups.map((group) => (
         <div key={group.key} style={{ marginBottom: "24px" }}>
           <div
@@ -329,17 +422,84 @@ export default function SessionView({
             </div>
           ) : (
             (session[group.key] || []).map((exercise) => (
-              <ExerciseRow
+              <div
                 key={exercise.id}
-                exercise={exercise}
-                theme={T}
-                readonly={readonly}
-                onChange={(updatedExercise) =>
-                  updateExercise(group.key, exercise.id, updatedExercise)
-                }
-                onDelete={() => deleteExercise(group.key, exercise.id)}
-                onShowHistory={() => setHistModal(exercise.id)}
-              />
+                style={{
+                  opacity: isTemplateSession && exercise.completed ? 0.72 : 1,
+                }}
+              >
+                {isTemplateSession && (
+                  <button
+                    onClick={() => toggleExerciseCompleted(group.key, exercise)}
+                    disabled={readonly}
+                    style={{
+                      width: "100%",
+                      background: exercise.completed
+                        ? `${T.green}14`
+                        : T.bgCard,
+                      border: `1px solid ${
+                        exercise.completed ? `${T.green}40` : T.bgCardBorder
+                      }`,
+                      borderRadius: "14px",
+                      padding: "10px 12px",
+                      marginBottom: "8px",
+                      cursor: readonly ? "default" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontFamily: "'DM Sans',sans-serif",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: "24px",
+                        height: "24px",
+                        borderRadius: "8px",
+                        background: exercise.completed
+                          ? T.green
+                          : "transparent",
+                        border: `1px solid ${
+                          exercise.completed ? T.green : T.bgCardBorder
+                        }`,
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "13px",
+                        fontWeight: 900,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {exercise.completed ? "✓" : ""}
+                    </span>
+
+                    <span
+                      style={{
+                        color: exercise.completed ? T.green : T.text,
+                        fontSize: "13px",
+                        fontWeight: 800,
+                        textAlign: "left",
+                        textDecoration: exercise.completed
+                          ? "line-through"
+                          : "none",
+                      }}
+                    >
+                      {exercise.machine}
+                    </span>
+                  </button>
+                )}
+
+                <ExerciseRow
+                  exercise={exercise}
+                  theme={T}
+                  readonly={readonly}
+                  onChange={(updatedExercise) =>
+                    updateExercise(group.key, exercise.id, updatedExercise)
+                  }
+                  onDelete={() => deleteExercise(group.key, exercise.id)}
+                  onShowHistory={() => setHistModal(exercise.id)}
+                />
+              </div>
             ))
           )}
         </div>
