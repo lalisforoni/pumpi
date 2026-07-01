@@ -264,15 +264,18 @@ export default function Pumpi() {
   };
 
 const newSession = async () => {
+  const now = Date.now();
+
   const session = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    status: "pending",
-    startedAt: null,
+    id: now,
+    date: new Date(now).toISOString(),
+    status: "active",
+    startedAt: now,
     finishedAt: null,
     lower: [],
     upper: [],
-    updatedAt: Date.now(),
+    fromTemplate: false,
+    updatedAt: now,
   };
 
   await save({
@@ -282,10 +285,10 @@ const newSession = async () => {
 
   setActiveSession(session.id);
   setTab("session");
-  
+
   saveSession(session);
 };
-
+  
 const updateSession = async (updated) => {
   const withTimestamp = markSessionUpdated(updated);
 
