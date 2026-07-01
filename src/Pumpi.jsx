@@ -51,7 +51,7 @@ export default function Pumpi() {
 
     const id = setInterval(() => {
       if (tab !== "session") loadData(user.id);
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
 
     return () => clearInterval(id);
   }, [user, tab]);
@@ -146,7 +146,8 @@ return () => {
         .from("sessions")
         .select("*")
         .eq("user_id", uid)
-        .order("id", { ascending: false });
+        .order("id", { ascending: false })
+        .limit(150);
 
       if (error) throw error;
 
