@@ -3,6 +3,7 @@ export const PENDING_KEY = "pumpi_pending_sync";
 export const DELETED_KEY = "pumpi_deleted_sessions";
 export const WORKOUT_DAYS_KEY = "pumpi_workout_days";
 export const FRIENDS_CACHE_KEY = "pumpi_friends_cache";
+export const WORKOUT_PLANS_KEY = "pumpi_workout_plans";
 
 const DEFAULT_WORKOUT_DAYS = [1, 2, 3, 4, 5];
 
@@ -32,17 +33,12 @@ export function setDeletedSessionIds(ids) {
 }
 
 export function addDeletedSessionId(id) {
-  setDeletedSessionIds([
-    ...getDeletedSessionIds(),
-    String(id),
-  ]);
+  setDeletedSessionIds([...getDeletedSessionIds(), String(id)]);
 }
 
 export function removeDeletedSessionId(id) {
   setDeletedSessionIds(
-    getDeletedSessionIds().filter(
-      (x) => x !== String(id)
-    )
+    getDeletedSessionIds().filter((x) => x !== String(id))
   );
 }
 
@@ -56,17 +52,12 @@ export function setPendingSyncIds(ids) {
 }
 
 export function addPendingSyncId(id) {
-  setPendingSyncIds([
-    ...getPendingSyncIds(),
-    String(id),
-  ]);
+  setPendingSyncIds([...getPendingSyncIds(), String(id)]);
 }
 
 export function removePendingSyncId(id) {
   setPendingSyncIds(
-    getPendingSyncIds().filter(
-      (x) => x !== String(id)
-    )
+    getPendingSyncIds().filter((x) => x !== String(id))
   );
 }
 
@@ -78,10 +69,7 @@ export function clearPendingSyncIds() {
 
 // ── Workout Days ─────────────────────────────────────────────
 export function getWorkoutDays() {
-  return readJSON(
-    WORKOUT_DAYS_KEY,
-    DEFAULT_WORKOUT_DAYS
-  );
+  return readJSON(WORKOUT_DAYS_KEY, DEFAULT_WORKOUT_DAYS);
 }
 
 export function saveWorkoutDays(days) {
@@ -101,6 +89,68 @@ export function clearFriendsCache() {
   try {
     localStorage.removeItem(FRIENDS_CACHE_KEY);
   } catch {}
+}
+
+// ── Workout Plans / Fichas ───────────────────────────────────
+export function getWorkoutPlans() {
+  return readJSON(WORKOUT_PLANS_KEY, []);
+}
+
+export function saveWorkoutPlans(plans) {
+  const normalized = (plans || []).map((plan) => ({
+    ...plan,
+    lower: plan.lower || [],
+    upper: plan.upper || [],
+    updatedAt: plan.updatedAt || Date.now(),
+  }));
+
+  writeJSON(WORKOUT_PLANS_KEY, normalized);
+  return normalized;
+}
+
+export function addWorkoutPlan(plan) {
+  const now = Date.now();
+
+  const newPlan = {
+    id: plan.id || now,
+    name: plan.name || "Nova ficha",
+    description: plan.description || "",
+    lower: plan.lower || [],
+    upper: plan.upper || [],
+    createdAt: plan.createdAt || now,
+    updatedAt: now,
+  };
+
+  const plans = getWorkoutPlans();
+  const next = [newPlan, ...plans];
+
+  return saveWorkoutPlans(next);
+}
+
+export function updateWorkoutPlan(planId, updatedPlan) {
+  const now = Date.now();
+
+  const plans = getWorkoutPlans().map((plan) =>
+    String(plan.id) === String(planId)
+      ? {
+          ...plan,
+          ...updatedPlan,
+          lower: updatedPlan.lower || plan.lower || [],
+          upper: updatedPlan.upper || plan.upper || [],
+          updatedAt: now,
+        }
+      : plan
+  );
+
+  return saveWorkoutPlans(plans);
+}
+
+export function deleteWorkoutPlan(planId) {
+  const plans = getWorkoutPlans().filter(
+    (plan) => String(plan.id) !== String(planId)
+  );
+
+  return saveWorkoutPlans(plans);
 }
 
 // ── Local Sessions ───────────────────────────────────────────
@@ -183,10 +233,7 @@ function mergeSessionPair(remote, local) {
     : local;
 }
 
-export function mergeSessions(
-  remote = [],
-  local = []
-) {
+export function mergeSessions(remote = [], local = []) {
   const remoteById = new Map(
     remote.map((session) => [
       String(session.id),
