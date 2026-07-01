@@ -198,9 +198,7 @@ export default function Pumpi() {
 
         localStorage.setItem(
           PENDING_KEY,
-          JSON.stringify(
-            pending.filter((id) => id !== String(session.id))
-          )
+          JSON.stringify(pending.filter((id) => id !== String(session.id)))
         );
       } catch {}
 
@@ -239,9 +237,7 @@ export default function Pumpi() {
 
           localStorage.setItem(
             PENDING_KEY,
-            JSON.stringify(
-              pending.filter((id) => id !== String(session.id))
-            )
+            JSON.stringify(pending.filter((id) => id !== String(session.id)))
           );
         } catch {}
       }
@@ -263,100 +259,101 @@ export default function Pumpi() {
     } catch {}
   };
 
-const newSession = async () => {
-  const now = Date.now();
+  const newSession = async () => {
+    const now = Date.now();
 
-  const session = {
-    id: now,
-    date: new Date(now).toISOString(),
-    status: "active",
-    startedAt: now,
-    finishedAt: null,
-    lower: [],
-    upper: [],
-    fromTemplate: false,
-    updatedAt: now,
+    const session = {
+      id: now,
+      date: new Date(now).toISOString(),
+      status: "active",
+      startedAt: now,
+      finishedAt: null,
+      lower: [],
+      upper: [],
+      fromTemplate: false,
+      updatedAt: now,
+    };
+
+    await save({
+      ...data,
+      sessions: [session, ...data.sessions],
+    });
+
+    setActiveSession(session.id);
+    setTab("session");
+
+    saveSession(session);
   };
 
-  await save({
-    ...data,
-    sessions: [session, ...data.sessions],
-  });
+  const updateSession = async (updated) => {
+    const withTimestamp = markSessionUpdated(updated);
 
-  setActiveSession(session.id);
-  setTab("session");
+    await save({
+      ...data,
+      sessions: data.sessions.map((session) =>
+        String(session.id) === String(withTimestamp.id)
+          ? withTimestamp
+          : session
+      ),
+    });
 
-  saveSession(session);
-};
-  
-const updateSession = async (updated) => {
-  const withTimestamp = markSessionUpdated(updated);
+    setActiveSession(withTimestamp.id);
 
-  await save({
-    ...data,
-    sessions: data.sessions.map((session) =>
-      String(session.id) === String(withTimestamp.id)
-        ? withTimestamp
-        : session
-    ),
-  });
-
-  setActiveSession(withTimestamp.id);
-
-  if (shouldSyncSession(withTimestamp)) {
-    saveSession(withTimestamp);
-  }
-};
-
-const finishSession = async () => {
-  const session = data.sessions.find(
-    (s) => String(s.id) === String(activeSession)
-  );
-
-  if (!session) return;
-
-  const updated = markSessionUpdated({
-    ...session,
-    status: "done",
-    finishedAt: Date.now(),
-  });
-
-  await save({
-    ...data,
-    sessions: data.sessions.map((item) =>
-      String(item.id) === String(activeSession) ? updated : item
-    ),
-  });
-
-  setCelebration(true);
-  saveSession(updated);
-};
-
-const deleteSession = async (id) => {
-  addDeletedSessionId(id);
-
-  await save({
-    ...data,
-    sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
-  });
-
-  setTab("home");
-
-  if (user) {
-    setSyncStatus("saving");
-
-    const ok = await deleteWithRetry(id, user.id);
-
-    if (ok) {
-      removeDeletedSessionId(id);
-      setSyncStatus("saved");
-      setTimeout(() => setSyncStatus(null), 3000);
-    } else {
-      setSyncStatus("error");
-      setTimeout(() => setSyncStatus(null), 5000);
+    if (shouldSyncSession(withTimestamp)) {
+      saveSession(withTimestamp);
     }
-  }
-};
+  };
+
+  const finishSession = async () => {
+    const session = data.sessions.find(
+      (s) => String(s.id) === String(activeSession)
+    );
+
+    if (!session) return;
+
+    const updated = markSessionUpdated({
+      ...session,
+      status: "done",
+      finishedAt: Date.now(),
+    });
+
+    await save({
+      ...data,
+      sessions: data.sessions.map((item) =>
+        String(item.id) === String(activeSession) ? updated : item
+      ),
+    });
+
+    setCelebration(true);
+    saveSession(updated);
+  };
+
+  const deleteSession = async (id) => {
+    addDeletedSessionId(id);
+
+    await save({
+      ...data,
+      sessions: data.sessions.filter((s) => String(s.id) !== String(id)),
+    });
+
+    setActiveSession(null);
+    setTab("home");
+
+    if (user) {
+      setSyncStatus("saving");
+
+      const ok = await deleteWithRetry(id, user.id);
+
+      if (ok) {
+        removeDeletedSessionId(id);
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus(null), 3000);
+      } else {
+        setSyncStatus("error");
+        setTimeout(() => setSyncStatus(null), 5000);
+      }
+    }
+  };
 
   const saveManualSession = async (session) => {
     await save({
@@ -440,8 +437,7 @@ const deleteSession = async (id) => {
     return "Boa noite";
   };
 
-  const displayName =
-    profile?.username || user?.email?.split("@")[0] || "você";
+  const displayName = profile?.username || user?.email?.split("@")[0] || "você";
 
   const sync =
     syncStatus === "saving"
@@ -469,7 +465,8 @@ const deleteSession = async (id) => {
           spin: false,
         }
       : null;
-    if (!loaded) {
+
+  if (!loaded) {
     return (
       <div
         style={{
@@ -553,7 +550,7 @@ const deleteSession = async (id) => {
             setCelebration(false);
             setActiveSession(null);
             setTab("home");
-          }}       
+          }}
         />
       )}
 
@@ -585,20 +582,46 @@ const deleteSession = async (id) => {
           }}
         >
           {tab === "session" ? (
-            <button
-              onClick={() => setTab("home")}
-              style={{
-                background: "none",
-                border: "none",
-                color: T.accent,
-                fontSize: "14px",
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "'DM Sans',sans-serif",
-              }}
-            >
-              ← Voltar
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                onClick={() => setTab("home")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: T.accent,
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "'DM Sans',sans-serif",
+                }}
+              >
+                ← Voltar
+              </button>
+
+              {currentSession && (
+                <button
+                  onClick={() => {
+                    const ok = window.confirm(
+                      "Tem certeza que quer excluir este treino?"
+                    );
+                    if (ok) deleteSession(currentSession.id);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${T.danger}30`,
+                    borderRadius: "999px",
+                    color: T.danger,
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    padding: "7px 10px",
+                    cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif",
+                  }}
+                >
+                  Excluir
+                </button>
+              )}
+            </div>
           ) : (
             <div style={{ minWidth: 0 }}>
               <p
@@ -668,13 +691,7 @@ const deleteSession = async (id) => {
           )}
 
           {tab === "home" && (
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                flexShrink: 0,
-              }}
-            >
+            <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
               <button
                 onClick={() => setShowManual(true)}
                 style={{
@@ -818,8 +835,7 @@ const deleteSession = async (id) => {
                 }}
               >
                 Comece com um treino simples.
-                <br />
-                O importante é aparecer.
+                <br />O importante é aparecer.
               </p>
 
               <button
@@ -845,7 +861,10 @@ const deleteSession = async (id) => {
             sortSessions(data.sessions).map((session) => {
               const total = totalEx(session);
               const badge = statusBadge(session);
-              const duration = calcDuration(session.startedAt, session.finishedAt);
+              const duration = calcDuration(
+                session.startedAt,
+                session.finishedAt
+              );
 
               return (
                 <div
@@ -983,12 +1002,6 @@ const deleteSession = async (id) => {
             />
 
             <div style={{ marginTop: "24px", display: "grid", gap: "10px" }}>
-              
-                >
-                  Iniciar treino
-                </button>
-              )}
-
               {currentSession.status === "active" && (
                 <button
                   onClick={finishSession}
@@ -1012,45 +1025,28 @@ const deleteSession = async (id) => {
               )}
 
               {currentSession.status === "done" && (
-                <>
-                  <button
-                    onClick={() => setTab("home")}
-                    style={{
-                      background: T.accent,
-                      border: "none",
-                      borderRadius: "16px",
-                      color: T.accentText,
-                      fontWeight: 800,
-                      fontSize: "13px",
-                      padding: "15px",
-                      width: "100%",
-                      cursor: "pointer",
-                      fontFamily: "'DM Sans',sans-serif",
-                      letterSpacing: "0.5px",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Voltar para meus treinos
-                  </button>
-
-                  <button
-                    onClick={() => deleteSession(currentSession.id)}
-                    style={{
-                      background: "transparent",
-                      border: `1px solid ${T.danger}30`,
-                      borderRadius: "12px",
-                      color: T.danger,
-                      fontSize: "13px",
-                      padding: "12px",
-                      width: "100%",
-                      cursor: "pointer",
-                      fontFamily: "'DM Sans',sans-serif",
-                      opacity: 0.65,
-                    }}
-                  >
-                    Excluir sessão
-                  </button>
-                </>
+                <button
+                  onClick={() => {
+                    setActiveSession(null);
+                    setTab("home");
+                  }}
+                  style={{
+                    background: T.accent,
+                    border: "none",
+                    borderRadius: "16px",
+                    color: T.accentText,
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    padding: "15px",
+                    width: "100%",
+                    cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Voltar para meus treinos
+                </button>
               )}
             </div>
           </>
