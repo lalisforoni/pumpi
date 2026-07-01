@@ -29,13 +29,9 @@ export default function WorkoutPlansView({
     updatedAt: Date.now(),
   });
 
-  const savePlans = (next) => {
-    setPlans(next);
-  };
-
   const createPlan = () => {
     const next = addWorkoutPlan(emptyPlan());
-    savePlans(next);
+    setPlans(next);
   };
 
   const removePlan = (id) => {
@@ -43,17 +39,16 @@ export default function WorkoutPlansView({
     if (!ok) return;
 
     const next = deleteWorkoutPlan(id);
-    savePlans(next);
-
-    if (String(editingPlan?.id) === String(id)) {
-      setEditingPlan(null);
-    }
+    setPlans(next);
+    setEditingPlan(null);
   };
 
   const savePlan = (plan) => {
     const next = updateWorkoutPlan(plan.id, plan);
-    savePlans(next);
-    setEditingPlan(next.find((item) => String(item.id) === String(plan.id)));
+    setPlans(next);
+
+    const refreshed = next.find((item) => String(item.id) === String(plan.id));
+    setEditingPlan(refreshed || null);
   };
 
   const updateExercise = (group, id, updatedExercise) => {
@@ -141,6 +136,7 @@ export default function WorkoutPlansView({
     return (
       <div>
         <button
+          type="button"
           onClick={() => setEditingPlan(null)}
           style={{
             background: "none",
@@ -235,6 +231,7 @@ export default function WorkoutPlansView({
               </div>
 
               <button
+                type="button"
                 onClick={() => setModalGroup(group.key)}
                 style={{
                   background: T.bgCard,
@@ -286,6 +283,7 @@ export default function WorkoutPlansView({
         ))}
 
         <button
+          type="button"
           onClick={() => onStartFromPlan(editingPlan)}
           style={{
             width: "100%",
@@ -307,6 +305,7 @@ export default function WorkoutPlansView({
         </button>
 
         <button
+          type="button"
           onClick={() => removePlan(editingPlan.id)}
           style={{
             width: "100%",
@@ -368,6 +367,7 @@ export default function WorkoutPlansView({
         </p>
 
         <button
+          type="button"
           onClick={createPlan}
           style={{
             width: "100%",
