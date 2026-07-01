@@ -549,7 +549,11 @@ const deleteSession = async (id) => {
         <CelebrationModal
           theme={T}
           session={currentSession}
-          onClose={() => setCelebration(false)}
+          onClose={() => {
+            setCelebration(false);
+            setActiveSession(null);
+            setTab("home");
+          }}       
         />
       )}
 
