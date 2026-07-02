@@ -35,12 +35,13 @@ export default function WorkoutPlansView({
   };
 
   const removePlan = (id) => {
-    const ok = window.confirm("Tem certeza que quer excluir esta ficha?");
-    if (!ok) return;
+    deleteWorkoutPlan(id);
 
-    const next = deleteWorkoutPlan(id);
-    setPlans(next);
+    const refreshedPlans = getWorkoutPlans();
+
+    setPlans(refreshedPlans);
     setEditingPlan(null);
+    setModalGroup(null);
   };
 
   const savePlan = (plan) => {
@@ -306,7 +307,11 @@ export default function WorkoutPlansView({
 
         <button
           type="button"
-          onClick={() => removePlan(editingPlan.id)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            removePlan(editingPlan.id);
+          }}
           style={{
             width: "100%",
             background: "transparent",
