@@ -6,7 +6,7 @@ export const LEVELS = [
   { min: 251, label: "Legendary Peach", desc: "250+ treinos" },
 ];
 
-export function getLevel(totalDone) {
+export function getLevel(totalDone = 0) {
   if (totalDone <= 0) return LEVELS[0];
 
   return (
@@ -15,14 +15,14 @@ export function getLevel(totalDone) {
   );
 }
 
-export function getNextLevel(totalDone) {
+export function getNextLevel(totalDone = 0) {
   return (
     LEVELS.find((level) => totalDone < level.min) ||
     LEVELS[LEVELS.length - 1]
   );
 }
 
-export function getLevelPct(totalDone) {
+export function getLevelPct(totalDone = 0) {
   const current = getLevel(totalDone);
   const next = getNextLevel(totalDone);
 
@@ -30,8 +30,11 @@ export function getLevelPct(totalDone) {
 
   return Math.min(
     100,
-    Math.round(
-      ((totalDone - current.min) / (next.min - current.min)) * 100
+    Math.max(
+      0,
+      Math.round(
+        ((totalDone - current.min) / (next.min - current.min)) * 100
+      )
     )
   );
 }
@@ -77,15 +80,24 @@ export const ACHIEVEMENTS = [
   },
 ];
 
+function getSessionDate(session) {
+  return session.date || session.finishedAt || session.startedAt || null;
+}
+
 export function calcConsistencyStreak(
-  doneSessions,
+  doneSessions = [],
   workoutDays = [1, 2, 3, 4, 5]
 ) {
   if (!doneSessions.length || !workoutDays.length) return 0;
 
   const trainedDays = new Set(
     doneSessions
-      .map((session) => session.date?.slice(0, 10))
+      .map((session) => {
+        const date = getSessionDate(session);
+        if (!date) return null;
+
+        return new Date(date).toISOString().slice(0, 10);
+      })
       .filter(Boolean)
   );
 
@@ -112,7 +124,7 @@ export function calcConsistencyStreak(
 }
 
 export function calcWeeklyProgress(
-  doneSessions,
+  doneSessions = [],
   workoutDays = [1, 2, 3, 4, 5]
 ) {
   const today = new Date();
@@ -130,23 +142,33 @@ export function calcWeeklyProgress(
   const trainedThisWeek = new Set(
     doneSessions
       .filter((session) => {
-        const date = new Date(session.date);
+        const rawDate = getSessionDate(session);
+        if (!rawDate) return false;
+
+        const date = new Date(rawDate);
         return date >= start && date < end;
       })
-      .map((session) => session.date.slice(0, 10))
+      .map((session) => {
+        const rawDate = getSessionDate(session);
+        return new Date(rawDate).toISOString().slice(0, 10);
+      })
   );
 
   const target = workoutDays.length || 5;
   const done = trainedThisWeek.size;
+  const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
 
   return {
     done,
+    completed: done,
     target,
-    pct: Math.min(100, Math.round((done / target) * 100)),
+    pct,
+    percent: pct,
+    remaining: Math.max(target - done, 0),
   };
 }
 
-export function calcMachinePRs(allExercises) {
+export function calcMachinePRs(allExercises = []) {
   const prs = {};
 
   allExercises.forEach((exercise) => {
@@ -167,7 +189,7 @@ export function calcMachinePRs(allExercises) {
   return prs;
 }
 
-export function calcWorkoutVolume(session) {
+export function calcWorkoutVolume(session = {}) {
   const exercises = [
     ...(session.lower || []),
     ...(session.upper || []),
