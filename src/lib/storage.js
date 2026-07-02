@@ -4,8 +4,17 @@ export const DELETED_KEY = "pumpi_deleted_sessions";
 export const WORKOUT_DAYS_KEY = "pumpi_workout_days";
 export const FRIENDS_CACHE_KEY = "pumpi_friends_cache";
 export const WORKOUT_PLANS_KEY = "pumpi_workout_plans";
+export const NOTIFICATION_SETTINGS_KEY = "pumpi_notification_settings";
 
 const DEFAULT_WORKOUT_DAYS = [1, 2, 3, 4, 5];
+
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  enabled: false,
+  hour: "19:00",
+  days: [1, 2, 3, 4, 5],
+  remindIfNoWorkout: true,
+  streakReminder: true,
+};
 
 // ── Safe JSON ────────────────────────────────────────────────
 function readJSON(key, fallback) {
@@ -73,7 +82,36 @@ export function getWorkoutDays() {
 }
 
 export function saveWorkoutDays(days) {
-  writeJSON(WORKOUT_DAYS_KEY, days);
+  const normalized = Array.isArray(days) ? days : DEFAULT_WORKOUT_DAYS;
+  writeJSON(WORKOUT_DAYS_KEY, normalized);
+  return normalized;
+}
+
+// ── Notification Settings ────────────────────────────────────
+export function getNotificationSettings() {
+  return {
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    ...readJSON(NOTIFICATION_SETTINGS_KEY, DEFAULT_NOTIFICATION_SETTINGS),
+  };
+}
+
+export function saveNotificationSettings(settings) {
+  const normalized = {
+    ...DEFAULT_NOTIFICATION_SETTINGS,
+    ...(settings || {}),
+    days: Array.isArray(settings?.days)
+      ? settings.days
+      : DEFAULT_NOTIFICATION_SETTINGS.days,
+  };
+
+  writeJSON(NOTIFICATION_SETTINGS_KEY, normalized);
+  return normalized;
+}
+
+export function clearNotificationSettings() {
+  try {
+    localStorage.removeItem(NOTIFICATION_SETTINGS_KEY);
+  } catch {}
 }
 
 // ── Friends Cache ────────────────────────────────────────────
@@ -228,9 +266,7 @@ function mergeSessionPair(remote, local) {
       0
   );
 
-  return remoteUpdated >= localUpdated
-    ? remote
-    : local;
+  return remoteUpdated >= localUpdated ? remote : local;
 }
 
 export function mergeSessions(remote = [], local = []) {
