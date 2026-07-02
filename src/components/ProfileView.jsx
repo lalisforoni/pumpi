@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { getLevel, getNextLevel, getLevelPct } from "../lib/gamification";
+import NotificationSettings from "./profile/NotificationSettings";
 
 export default function ProfileView({
   profile,
@@ -383,6 +384,8 @@ export default function ProfileView({
           </p>
         </Card>
       )}
+
+      <NotificationSettings theme={T} />
 
       <Card>
         <SectionLabel>Suporte e sugestões</SectionLabel>
